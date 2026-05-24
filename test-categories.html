@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test - Categories</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Category API Diagnostic Tool</h1>
+    
+    <div class="test-box">
+        <h2>Test Category-Totals Endpoint</h2>
+        <button onclick="testCategoryTotals()">Test /api/category-totals</button>
+        <button onclick="testTransactions()">Test /api/transactions</button>
+        <button onclick="testBoth()">Test Both</button>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function testCategoryTotals() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Testing /api/category-totals...</p>';
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch('/api/category-totals', {
+                    credentials: 'include'
+                });
+                const endTime = Date.now();
+                
+                const data = await response.json();
+                
+                let html = `
+                    <h3 class="success">✅ Success!</h3>
+                    <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                    <p><strong>Response Time:</strong> ${endTime - startTime}ms</p>
+                    <p><strong>Response Data:</strong></p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+                // Calculate totals
+                let totalIncome = 0;
+                let totalExpense = 0;
+                
+                if (data.income) {
+                    Object.values(data.income).forEach(v => totalIncome += v);
+                }
+                if (data.expense) {
+                    Object.values(data.expense).forEach(v => totalExpense += v);
+                }
+                
+                html += `
+                    <p><strong>Calculated Totals:</strong></p>
+                    <ul>
+                        <li>Total Income: ₹${totalIncome.toFixed(2)}</li>
+                        <li>Total Expense: ₹${totalExpense.toFixed(2)}</li>
+                        <li>Net: ₹${(totalIncome - totalExpense).toFixed(2)}</li>
+                    </ul>
+                `;
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <h3 class="error">❌ Error!</h3>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+        
+        async function testTransactions() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Testing /api/transactions...</p>';
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch('/api/transactions', {
+                    credentials: 'include'
+                });
+                const endTime = Date.now();
+                
+                const data = await response.json();
+                
+                let html = `
+                    <h3 class="success">✅ Success!</h3>
+                    <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                    <p><strong>Response Time:</strong> ${endTime - startTime}ms</p>
+                    <p><strong>Transaction Count:</strong> ${data.length}</p>
+                    <p><strong>First 3 Transactions:</strong></p>
+                    <pre>${JSON.stringify(data.slice(0, 3), null, 2)}</pre>
+                `;
+                
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <h3 class="error">❌ Error!</h3>
+                    <p><strong>Error Message:</strong> ${error.message}</p>
+                    <pre>${error.stack}</pre>
+                `;
+            }
+        }
+        
+        async function testBoth() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<p>Testing both endpoints...</p>';
+            
+            let html = '<h3>Running Tests...</h3>';
+            
+            // Test 1: Category Totals
+            html += '<h4>Test 1: /api/category-totals</h4>';
+            try {
+                const response = await fetch('/api/category-totals', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                html += `<p class="success">✅ Status: ${response.status}</p>`;
+                html += `<p>Income categories: ${Object.keys(data.income || {}).length}</p>`;
+                html += `<p>Expense categories: ${Object.keys(data.expense || {}).length}</p>`;
+            } catch (error) {
+                html += `<p class="error">❌ Error: ${error.message}</p>`;
+            }
+            
+            // Test 2: Transactions
+            html += '<h4>Test 2: /api/transactions</h4>';
+            try {
+                const response = await fetch('/api/transactions', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                html += `<p class="success">✅ Status: ${response.status}</p>`;
+                html += `<p>Total transactions: ${data.length}</p>`;
+            } catch (error) {
+                html += `<p class="error">❌ Error: ${error.message}</p>`;
+            }
+            
+            html += '<p><strong>If both tests pass, categories.html should work!</strong></p>';
+            html += '<p><a href="categories.html">Go to Categories Page →</a></p>';
+            
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
