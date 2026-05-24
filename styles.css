@@ -1,0 +1,434 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.nav-links {
+    max-width: 800px;
+    margin: 0 auto 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.nav-btn {
+    padding: 8px 16px;
+    background: white;
+    color: #1e40af;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.9em;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+.nav-btn:hover {
+    background: #f1f5f9;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    padding: 25px;
+}
+
+h1 {
+    text-align: center;
+    color: #1e293b;
+    margin-bottom: 20px;
+    font-size: 1.75em;
+    border-bottom: 3px solid #3b82f6;
+    padding-bottom: 10px;
+}
+
+.section {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8fafc;
+    border-radius: 10px;
+    border-left: 4px solid #3b82f6;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.section h2 {
+    color: #1e40af;
+    margin-bottom: 12px;
+    font-size: 1.3em;
+    font-weight: 700;
+}
+
+.date-section {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    border-left: 4px solid #3b82f6;
+    margin-bottom: 15px;
+    padding: 12px 15px;
+}
+
+.date-section .form-group {
+    margin-bottom: 0;
+}
+
+.date-section label {
+    font-size: 1em;
+    font-weight: 700;
+    color: #1e40af;
+}
+
+.date-section input[type="date"] {
+    font-size: 0.95em;
+    padding: 8px 10px;
+    border: 2px solid #3b82f6;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.date-section input[type="date"]:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-hint {
+    display: block;
+    margin-top: 6px;
+    color: #64748b;
+    font-size: 0.8em;
+    font-style: italic;
+}
+
+.section h3 {
+    color: #555;
+    margin-bottom: 10px;
+    font-size: 1em;
+    margin-top: 10px;
+}
+
+.receipt-items {
+    background: transparent;
+    padding: 0;
+    border-radius: 6px;
+    margin-top: 15px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.receipt-items h3 {
+    color: #1e40af;
+    margin-bottom: 12px;
+    font-size: 1.05em;
+    font-weight: 600;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #3b82f6;
+    grid-column: 1 / -1;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    color: #555;
+    font-weight: 500;
+    font-size: 0.9em;
+}
+
+.form-row {
+    margin-bottom: 0;
+    background: white;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border-left: 3px solid #3b82f6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+}
+
+.form-row:hover {
+    box-shadow: 0 3px 8px rgba(59, 130, 246, 0.15);
+    transform: translateX(2px);
+}
+
+.form-row label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    color: #1e40af;
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.badge-bullet {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+    border-radius: 50%;
+    margin-right: 10px;
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.4);
+    position: relative;
+}
+
+.badge-bullet::before {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+}
+
+.payment-select {
+    flex: 0 0 110px;
+    padding: 8px 10px;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.85em;
+    transition: all 0.3s ease;
+    background-color: white;
+    font-weight: 500;
+    color: #374151;
+}
+
+.payment-select:hover {
+    border-color: #3b82f6;
+}
+
+.amount-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.9em;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.amount-input:hover {
+    border-color: #3b82f6;
+}
+
+.input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.9em;
+    transition: all 0.3s ease;
+}
+
+.form-group input[readonly] {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
+
+.form-group.total {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid #3b82f6;
+}
+
+.form-group.total label {
+    font-size: 1.1em;
+    color: #1e40af;
+    font-weight: 600;
+}
+
+.form-group.total input {
+    font-weight: 600;
+    font-size: 1.1em;
+    color: #1e40af;
+    background: white;
+    border: 2px solid #3b82f6;
+}
+
+.closing-balance-section {
+    background: #fef3c7;
+    border-left: 5px solid #f59e0b;
+}
+
+.closing-balance-section h2 {
+    color: #92400e;
+}
+
+.closing-balance-section .form-group.total label {
+    color: #92400e;
+    font-size: 1.05em;
+}
+
+.closing-balance-section .form-group.total input {
+    color: #92400e;
+    background-color: #fff;
+    border: 2px solid #f59e0b;
+    font-size: 1.05em;
+}
+
+.balance-formula {
+    color: #92400e;
+    font-size: 0.85em;
+    font-style: italic;
+    margin-top: 8px;
+    text-align: center;
+}
+
+.button-group {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+}
+
+.btn-calculate {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+}
+
+.btn-calculate:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .receipt-items {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+
+    h1 {
+        font-size: 1.5em;
+    }
+
+    .section {
+        padding: 12px;
+    }
+    
+    .nav-links {
+        flex-direction: column;
+    }
+
+    .receipt-items {
+        grid-template-columns: 1fr;
+    }
+
+    .form-row {
+        padding: 8px 10px;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .input-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .payment-select {
+        flex: 1;
+        width: 100%;
+    }
+}
+
+/* Auto-fill notification */
+.auto-fill-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+    font-weight: 600;
+    z-index: 1000;
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s ease;
+}
+
+.auto-fill-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+@media (max-width: 768px) {
+    .auto-fill-notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        text-align: center;
+        font-size: 0.9em;
+    }
+}

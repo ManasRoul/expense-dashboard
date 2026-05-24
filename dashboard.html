@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>💰 Financial Dashboard</h1>
+            <div class="header-actions">
+                <button onclick="openDownloadModal()" class="btn btn-download">📥 Download Report</button>
+                <a href="categories.html" class="btn btn-info">📊 Category View</a>
+                <a href="form.html" class="btn btn-primary">+ New Entry</a>
+                <button onclick="refreshDashboard(this)" class="btn btn-secondary">🔄 Refresh</button>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <!-- Cash Balance Card -->
+            <div class="stat-card cash-card">
+                <div class="card-icon">💵</div>
+                <div class="card-content">
+                    <h3>Cash Balance</h3>
+                    <div class="balance-amount" id="cashBalance">₹0.00</div>
+                    <div class="balance-details">
+                        <span class="income-text">Income: <span id="cashIncome">₹0.00</span></span>
+                        <span class="expense-text">Expense: <span id="cashExpense">₹0.00</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- UPI Balance Card -->
+            <div class="stat-card upi-card">
+                <div class="card-icon">📱</div>
+                <div class="card-content">
+                    <h3>UPI Balance</h3>
+                    <div class="balance-amount" id="upiBalance">₹0.00</div>
+                    <div class="balance-details">
+                        <span class="income-text">Income: <span id="upiIncome">₹0.00</span></span>
+                        <span class="expense-text">Expense: <span id="upiExpense">₹0.00</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Balance Card -->
+            <div class="stat-card total-card">
+                <div class="card-icon">💎</div>
+                <div class="card-content">
+                    <h3>Current Balance</h3>
+                    <div class="balance-amount" id="totalBalance">₹0.00</div>
+                    <div class="balance-details">
+                        <span class="info-text">Latest Closing Balance</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="transactions-section">
+            <h2>Recent Transactions</h2>
+            <div class="table-container">
+                <table id="transactionsTable">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Opening Balance</th>
+                            <th>Total Income</th>
+                            <th>Total Expense</th>
+                            <th>Closing Balance</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsBody">
+                        <tr>
+                            <td colspan="6" class="loading-message">Loading transactions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Transaction Details Modal -->
+        <div id="transactionModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Transaction Details</h2>
+                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                </div>
+                <div class="modal-body" id="modalBody">
+                    <!-- Transaction details will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Report Modal -->
+        <div id="downloadModal" class="modal" style="display: none;">
+            <div class="modal-content download-modal">
+                <div class="modal-header">
+                    <h2>📥 Download Financial Report</h2>
+                    <button class="modal-close" onclick="closeDownloadModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="download-form">
+                        <div class="form-section">
+                            <h3>Select Date Range</h3>
+                            <div class="date-range-inputs">
+                                <div class="date-input-group">
+                                    <label for="fromDate">From Date</label>
+                                    <input type="date" id="fromDate" required>
+                                </div>
+                                <div class="date-input-group">
+                                    <label for="toDate">To Date</label>
+                                    <input type="date" id="toDate" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Select Format</h3>
+                            <div class="format-options">
+                                <label class="format-option">
+                                    <input type="radio" name="format" value="excel" checked>
+                                    <span class="format-card">
+                                        <span class="format-icon">📊</span>
+                                        <span class="format-name">Excel</span>
+                                        <span class="format-desc">Download as .xlsx file</span>
+                                    </span>
+                                </label>
+                                <label class="format-option">
+                                    <input type="radio" name="format" value="pdf">
+                                    <span class="format-card">
+                                        <span class="format-icon">📄</span>
+                                        <span class="format-name">PDF</span>
+                                        <span class="format-desc">Download as .pdf file</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="download-actions">
+                            <button onclick="generateReport()" class="btn btn-primary btn-lg">Generate & Download</button>
+                            <button onclick="closeDownloadModal()" class="btn btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="auth.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

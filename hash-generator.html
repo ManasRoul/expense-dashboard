@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Hash Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .result-box {
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .result-box.show {
+            display: block;
+        }
+
+        .result-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .hash-value {
+            background: white;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .sql-query {
+            background: #2d3748;
+            color: #a0aec0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin-top: 15px;
+        }
+
+        .sql-keyword {
+            color: #fc8181;
+        }
+
+        .sql-string {
+            color: #68d391;
+        }
+
+        .copy-btn {
+            background: #48bb78;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .copy-btn:hover {
+            background: #38a169;
+        }
+
+        .copy-btn.copied {
+            background: #2d3748;
+        }
+
+        .warning {
+            background: #fff5f5;
+            border-left: 4px solid #fc8181;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #742a2a;
+        }
+
+        .success {
+            background: #f0fff4;
+            border-left: 4px solid #48bb78;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #22543d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Password Hash Generator</h1>
+        <p class="subtitle">Create secure SHA-256 hashes for database users</p>
+
+        <div class="info-box">
+            ℹ️ This tool generates SHA-256 password hashes for your Financial Dashboard users. Copy the generated SQL query and run it in phpMyAdmin.
+        </div>
+
+        <form id="hashForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input 
+                    type="text" 
+                    id="username" 
+                    placeholder="Enter username (e.g., john)" 
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    placeholder="Enter password" 
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="role">User Role</label>
+                <select id="role" required>
+                    <option value="contributor">👤 Contributor (can view & add, cannot delete)</option>
+                    <option value="owner">👑 Owner (can view, add & delete)</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                Generate Hash & SQL
+            </button>
+        </form>
+
+        <div id="result" class="result-box">
+            <div class="success">
+                ✅ Hash generated successfully!
+            </div>
+
+            <div style="margin-top: 20px;">
+                <div class="result-label">Password Hash (SHA-256):</div>
+                <div class="hash-value" id="hashValue"></div>
+                <button class="copy-btn" onclick="copyHash()">📋 Copy Hash</button>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <div class="result-label">SQL Query (Run in phpMyAdmin):</div>
+                <div class="sql-query" id="sqlQuery"></div>
+                <button class="copy-btn" onclick="copySql()">📋 Copy SQL Query</button>
+            </div>
+
+            <div class="warning">
+                ⚠️ <strong>Security:</strong> Never share password hashes! Store them safely. Delete this file after use if uploaded to production server.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function hashPassword(password) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+
+        document.getElementById('hashForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+
+            if (!username || !password) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            // Generate hash
+            const hash = await hashPassword(password);
+
+            // Generate SQL
+            const sql = `INSERT INTO users (username, password_hash, role) 
+VALUES ('${username}', '${hash}', '${role}');`;
+
+            // Display results
+            document.getElementById('hashValue').textContent = hash;
+            document.getElementById('sqlQuery').innerHTML = 
+                `<span class="sql-keyword">INSERT INTO</span> users (username, password_hash, role) <br>` +
+                `<span class="sql-keyword">VALUES</span> (<span class="sql-string">'${username}'</span>, <span class="sql-string">'${hash}'</span>, <span class="sql-string">'${role}'</span>);`;
+
+            document.getElementById('result').classList.add('show');
+            document.getElementById('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+
+        function copyHash() {
+            const hash = document.getElementById('hashValue').textContent;
+            navigator.clipboard.writeText(hash).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        function copySql() {
+            const username = document.getElementById('username').value.trim();
+            const hash = document.getElementById('hashValue').textContent;
+            const role = document.getElementById('role').value;
+            const sql = `INSERT INTO users (username, password_hash, role) VALUES ('${username}', '${hash}', '${role}');`;
+            
+            navigator.clipboard.writeText(sql).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - Financial Dashboard</title>
+    <link rel="stylesheet" href="home.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="logo">💰</span>
+                <span class="brand-name">Financial Dashboard</span>
+            </div>
+            <div class="nav-user">
+                <span class="welcome-text">Welcome, <strong id="username">User</strong></span>
+                <button class="btn-logout" onclick="logout()">Logout 🚪</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Choose a Section</h1>
+            <p>Select what you'd like to do today</p>
+        </div>
+
+        <div class="cards-grid">
+            <!-- Transaction Form Card -->
+            <div class="feature-card" onclick="navigateTo('form.html')">
+                <div class="card-icon">📝</div>
+                <h2>Transaction Form</h2>
+                <p>Add new income and expense entries with detailed categorization</p>
+                <ul class="card-features">
+                    <li>✓ Track income & expenses</li>
+                    <li>✓ Cash & UPI payments</li>
+                    <li>✓ Auto-calculations</li>
+                </ul>
+                <div class="card-action">
+                    <span class="action-text">Go to Form</span>
+                    <span class="action-arrow">→</span>
+                </div>
+            </div>
+
+            <!-- Dashboard Card -->
+            <div class="feature-card" onclick="navigateTo('dashboard.html')">
+                <div class="card-icon">📊</div>
+                <h2>Dashboard</h2>
+                <p>View your current balances and recent transaction history</p>
+                <ul class="card-features">
+                    <li>✓ Cash & UPI balances</li>
+                    <li>✓ Recent transactions</li>
+                    <li>✓ Download reports</li>
+                </ul>
+                <div class="card-action">
+                    <span class="action-text">View Dashboard</span>
+                    <span class="action-arrow">→</span>
+                </div>
+            </div>
+
+            <!-- Categories Card -->
+            <div class="feature-card" onclick="navigateTo('categories.html')">
+                <div class="card-icon">📋</div>
+                <h2>Categories</h2>
+                <p>Analyze spending by category with detailed breakdowns</p>
+                <ul class="card-features">
+                    <li>✓ Category-wise totals</li>
+                    <li>✓ Date-wise entries</li>
+                    <li>✓ Income vs Expenses</li>
+                </ul>
+                <div class="card-action">
+                    <span class="action-text">View Categories</span>
+                    <span class="action-arrow">→</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="home.js"></script>
+</body>
+</html>
