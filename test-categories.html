@@ -86,10 +86,10 @@
                 let totalExpense = 0;
                 
                 if (data.income) {
-                    Object.values(data.income).forEach(v => totalIncome += v);
+                    Object.values(data.income).forEach(v => totalIncome += parseFloat(v) || 0);
                 }
                 if (data.expense) {
-                    Object.values(data.expense).forEach(v => totalExpense += v);
+                    Object.values(data.expense).forEach(v => totalExpense += parseFloat(v) || 0);
                 }
                 
                 html += `
