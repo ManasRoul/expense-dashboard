@@ -1,4 +1,5 @@
 // Category labels mapping
+// VERSION: 2026-05-24-v2-FIXED (with parseFloat and error handling)
 const incomeLabels = {
     'room_rent': { name: 'Room Rent', icon: '🏠' },
     'mattress_charge': { name: 'Mattress Charge', icon: '🛏️' },
