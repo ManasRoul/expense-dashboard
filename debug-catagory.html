@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categories Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            font-size: 12px;
+        }
+        .success { color: #4CAF50; font-weight: bold; }
+        .error { color: #f44336; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🐛 Categories Debug Tool</h1>
+    
+    <div class="box">
+        <h2>Step-by-Step Debug</h2>
+        <button onclick="runFullDebug()">🔍 Run Full Debug</button>
+        <div id="debug"></div>
+    </div>
+
+    <script>
+        const incomeLabels = {
+            'room_rent': { name: 'Room Rent', icon: '🏠' },
+            'mattress_charge': { name: 'Mattress Charge', icon: '🛏️' },
+            'travel_cab': { name: 'Travel/Cab Service', icon: '🚕' },
+            'kitchen_facility': { name: 'Kitchen Facility', icon: '🍳' },
+            'clean_charge': { name: 'Clean Charge', icon: '🧹' },
+            'misc_receipt': { name: 'Misc Receipt', icon: '💵' }
+        };
+
+        const expenseLabels = {
+            'brokerage': { name: 'Brokerage', icon: '🤝' },
+            'salary': { name: 'Salary', icon: '💼' },
+            'room_cleaning_charge': { name: 'Room Cleaning Charge', icon: '🧼' },
+            'generator_maintenance': { name: 'Generator & Maintenance', icon: '⚡' },
+            'hotel_stationary': { name: 'Hotel Stationary', icon: '📝' },
+            'hotel_cleaning_sanitation': { name: 'Hotel Cleaning & Sanitation', icon: '🧽' },
+            'rent_taxes': { name: 'Rent & Taxes', icon: '🏢' },
+            'tv_recharge': { name: 'TV Recharge', icon: '📺' },
+            'camera_wifi': { name: 'Camera/WiFi', icon: '📡' },
+            'plumbing_maintenance': { name: 'Plumbing & Maintenance', icon: '🔧' },
+            'electricity_maintenance': { name: 'Electricity & Maintenance', icon: '💡' },
+            'electricity_bill': { name: 'Electricity Bill', icon: '⚡' },
+            'staff_fooding': { name: 'Staff Fooding', icon: '🍽️' },
+            'laundry': { name: 'Laundry', icon: '👕' },
+            'owner_kitchen_cab': { name: 'Owner Kitchen & Cab Payment', icon: '🚗' },
+            'office_stationary': { name: 'Office Stationary', icon: '📋' },
+            'misc_expenses': { name: 'Misc Expenses', icon: '💳' }
+        };
+
+        async function runFullDebug() {
+            const debugDiv = document.getElementById('debug');
+            let html = '<h3>Debug Log:</h3>';
+            
+            try {
+                // Step 1
+                html += '<h4>Step 1: Fetch /api/category-totals</h4>';
+                const response = await fetch('/api/category-totals', {
+                    credentials: 'include'
+                });
+                html += `<p class="success">✅ Status: ${response.status}</p>`;
+                
+                const data = await response.json();
+                html += `<p>✅ Data received</p>`;
+                html += `<pre>${JSON.stringify(data, null, 2).substring(0, 500)}...</pre>`;
+                
+                // Step 2
+                html += '<h4>Step 2: Check data structure</h4>';
+                html += `<p>Has income key: ${!!data.income}</p>`;
+                html += `<p>Has expense key: ${!!data.expense}</p>`;
+                html += `<p>Income keys: ${Object.keys(data.income || {}).join(', ')}</p>`;
+                html += `<p>Expense keys: ${Object.keys(data.expense || {}).join(', ')}</p>`;
+                
+                // Step 3
+                html += '<h4>Step 3: Test data type conversion</h4>';
+                const testIncome = Object.entries(data.income)[0];
+                if (testIncome) {
+                    html += `<p>First income item: ${testIncome[0]} = ${testIncome[1]}</p>`;
+                    html += `<p>Type: ${typeof testIncome[1]}</p>`;
+                    html += `<p>parseFloat: ${parseFloat(testIncome[1])}</p>`;
+                    html += `<p>toFixed(2): ${parseFloat(testIncome[1]).toFixed(2)}</p>`;
+                }
+                
+                // Step 4
+                html += '<h4>Step 4: Test label lookup</h4>';
+                let missingLabels = [];
+                Object.keys(data.income || {}).forEach(cat => {
+                    if (!incomeLabels[cat]) {
+                        missingLabels.push(`income.${cat}`);
+                    }
+                });
+                Object.keys(data.expense || {}).forEach(cat => {
+                    if (!expenseLabels[cat]) {
+                        missingLabels.push(`expense.${cat}`);
+                    }
+                });
+                
+                if (missingLabels.length > 0) {
+                    html += `<p class="error">❌ Missing labels: ${missingLabels.join(', ')}</p>`;
+                } else {
+                    html += `<p class="success">✅ All labels found</p>`;
+                }
+                
+                // Step 5
+                html += '<h4>Step 5: Fetch /api/transactions</h4>';
+                const transResponse = await fetch('/api/transactions', {
+                    credentials: 'include'
+                });
+                html += `<p class="success">✅ Status: ${transResponse.status}</p>`;
+                
+                const transactions = await transResponse.json();
+                html += `<p>✅ Transactions: ${transactions.length} items</p>`;
+                
+                if (transactions.length > 0) {
+                    html += `<p>First transaction keys: ${Object.keys(transactions[0]).slice(0, 10).join(', ')}...</p>`;
+                }
+                
+                // Step 6
+                html += '<h4>Step 6: Test sorting</h4>';
+                try {
+                    const sorted = Object.entries(data.income).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
+                    html += `<p class="success">✅ Sorting works</p>`;
+                    html += `<p>Top 3: ${sorted.slice(0, 3).map(([k, v]) => `${k}=${v}`).join(', ')}</p>`;
+                } catch (e) {
+                    html += `<p class="error">❌ Sorting failed: ${e.message}</p>`;
+                }
+                
+                // Step 7
+                html += '<h4>Step 7: Test card creation</h4>';
+                try {
+                    const [category, amount] = Object.entries(data.income)[0];
+                    const numAmount = parseFloat(amount) || 0;
+                    const label = incomeLabels[category];
+                    
+                    html += `<p>Category: ${category}</p>`;
+                    html += `<p>Amount: ${amount} → ${numAmount}</p>`;
+                    html += `<p>Label: ${label ? label.name : 'NOT FOUND'}</p>`;
+                    
+                    if (label) {
+                        const testHTML = `
+                            <div class="category-header">
+                                <div class="category-name">${label.name}</div>
+                                <div class="category-icon">${label.icon}</div>
+                            </div>
+                            <div class="category-amount">₹${numAmount.toFixed(2)}</div>
+                        `;
+                        html += `<p class="success">✅ Card HTML creation works</p>`;
+                        html += `<pre>${testHTML}</pre>`;
+                    }
+                } catch (e) {
+                    html += `<p class="error">❌ Card creation failed: ${e.message}</p>`;
+                    html += `<pre>${e.stack}</pre>`;
+                }
+                
+                html += '<h3 class="success">✅ All checks passed!</h3>';
+                html += '<p><a href="categories.html">→ Go to Categories Page</a></p>';
+                
+            } catch (error) {
+                html += `<h3 class="error">❌ Error occurred</h3>`;
+                html += `<p><strong>Error:</strong> ${error.message}</p>`;
+                html += `<pre>${error.stack}</pre>`;
+            }
+            
+            debugDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
