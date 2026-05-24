@@ -1,5 +1,6 @@
 import sys
 import os
+import traceback
 
 # Add your project directory to the sys.path
 project_home = os.path.dirname(__file__)
@@ -14,15 +15,29 @@ if os.path.exists(VENV_PATH):
 # Load environment variables from .env if it exists
 env_file = os.path.join(project_home, '.env')
 if os.path.exists(env_file):
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                os.environ.setdefault(key.strip(), value.strip())
+    try:
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+        print(f"[passenger_wsgi] Loaded environment variables from {env_file}")
+    except Exception as e:
+        print(f"[passenger_wsgi] Error loading .env: {e}")
+else:
+    print(f"[passenger_wsgi] Warning: .env file not found at {env_file}")
 
 # Import your Flask application (after loading env vars)
-from server import app as application
-
-# Also expose as 'app' for compatibility
-app = application
+try:
+    from server import app as application
+    print("[passenger_wsgi] Successfully imported Flask app")
+    
+    # Also expose as 'app' for compatibility
+    app = application
+except Exception as e:
+    print("[passenger_wsgi] ERROR: Failed to import Flask application")
+    print(f"[passenger_wsgi] Error: {e}")
+    print("[passenger_wsgi] Traceback:")
+    traceback.print_exc()
+    raise
