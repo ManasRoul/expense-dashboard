@@ -70,10 +70,11 @@ async function loadCategoryData() {
         const incomeGrid = document.getElementById('incomeGrid');
         incomeGrid.innerHTML = '';
         
-        const sortedIncome = Object.entries(data.income).sort((a, b) => b[1] - a[1]);
+        const sortedIncome = Object.entries(data.income).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
         
         sortedIncome.forEach(([category, amount]) => {
-            totalIncome += amount;
+            const numAmount = parseFloat(amount) || 0;
+            totalIncome += numAmount;
             const label = incomeLabels[category];
             
             // Count number of entries for this category
@@ -89,10 +90,10 @@ async function loadCategoryData() {
                     <div class="category-name">${label.name}</div>
                     <div class="category-icon">${label.icon}</div>
                 </div>
-                <div class="category-amount">₹${amount.toFixed(2)}</div>
+                <div class="category-amount">₹${numAmount.toFixed(2)}</div>
                 <div class="category-count">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</div>
                 <div class="category-footer">
-                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'income', '${label.name}')" ${amount === 0 ? 'disabled' : ''}>
+                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'income', '${label.name}')" ${numAmount === 0 ? 'disabled' : ''}>
                         View Details
                     </button>
                 </div>
@@ -104,10 +105,11 @@ async function loadCategoryData() {
         const expenseGrid = document.getElementById('expenseGrid');
         expenseGrid.innerHTML = '';
         
-        const sortedExpense = Object.entries(data.expense).sort((a, b) => b[1] - a[1]);
+        const sortedExpense = Object.entries(data.expense).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
         
         sortedExpense.forEach(([category, amount]) => {
-            totalExpense += amount;
+            const numAmount = parseFloat(amount) || 0;
+            totalExpense += numAmount;
             const label = expenseLabels[category];
             
             // Count number of entries for this category
@@ -123,10 +125,10 @@ async function loadCategoryData() {
                     <div class="category-name">${label.name}</div>
                     <div class="category-icon">${label.icon}</div>
                 </div>
-                <div class="category-amount">₹${amount.toFixed(2)}</div>
+                <div class="category-amount">₹${numAmount.toFixed(2)}</div>
                 <div class="category-count">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</div>
                 <div class="category-footer">
-                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'expense', '${label.name}')" ${amount === 0 ? 'disabled' : ''}>
+                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'expense', '${label.name}')" ${numAmount === 0 ? 'disabled' : ''}>
                         View Details
                     </button>
                 </div>
