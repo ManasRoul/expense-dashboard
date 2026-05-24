@@ -1,0 +1,42 @@
+# Passenger WSGI Configuration
+PassengerEnabled On
+PassengerAppRoot /home/sagaufqr/finance.sagarbela.com
+
+# Python configuration
+PassengerPython /home/sagaufqr/finance.sagarbela.com/venv/bin/python3
+
+# Rewrite rules for API routing
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+    
+    # Redirect root to login.html
+    RewriteCond %{REQUEST_URI} ^/$
+    RewriteRule ^$ /login.html [L,R=301]
+    
+    # Route /api/* requests to the Flask app
+    RewriteRule ^api/(.*)$ passenger_wsgi.py/$1 [QSA,L]
+    
+    # Allow static files (HTML, CSS, JS, images) to be served directly
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+    
+    # All other non-existent requests go to Flask
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ passenger_wsgi.py/$1 [QSA,L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes
+
+# Error pages (optional)
+ErrorDocument 404 /404.html
+ErrorDocument 500 /500.html
