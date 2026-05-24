@@ -1,9 +1,21 @@
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from datetime import datetime, timedelta
 import os
 import hashlib
+import secrets
+import json
+from decimal import Decimal, InvalidOperation
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    LIMITER_AVAILABLE = True
+except ImportError:
+    LIMITER_AVAILABLE = False
+    print("WARNING: Flask-Limiter not installed. Rate limiting disabled.")
+    print("Install with: pip install Flask-Limiter")
 from config import USE_MYSQL, MYSQL_CONFIG
 
 # Import MySQL connector if needed
@@ -17,13 +29,40 @@ if USE_MYSQL:
         exit(1)
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'  # Change this in production!
+# Generate secure random secret key
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = not app.debug  # Secure cookies in production
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# Configure CORS to allow credentials
-CORS(app, supports_credentials=True, origins=['http://localhost:5000'])
+# Session timeout (30 minutes of inactivity)
+SESSION_TIMEOUT = 1800  # seconds
+
+# Configure CORS - allow from environment or default to localhost
+ALLOWED_ORIGINS = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:5000').split(',')
+CORS(app, 
+     supports_credentials=True, 
+     origins=ALLOWED_ORIGINS,
+     methods=['GET', 'POST', 'DELETE', 'OPTIONS'],
+     allow_headers=['Content-Type'])
+
+# Rate limiting
+if LIMITER_AVAILABLE:
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        default_limits=["200 per day", "50 per hour"],
+        storage_uri="memory://"
+    )
+else:
+    # Dummy decorator when limiter not available
+    class DummyLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(f):
+                return f
+            return decorator
+    limiter = DummyLimiter()
 
 # Database connection helper
 def get_db_connection():
@@ -238,8 +277,8 @@ def init_db():
     execute_query(users_table_query)
     
     # Create default owner user (username: admin, password: admin123)
-    # Password is hashed using SHA256
-    default_password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+    # Password is hashed using PBKDF2-SHA256 with salt
+    default_password_hash = hash_password('admin123')
     
     # Check if default user exists
     check_user_query = "SELECT id FROM users WHERE username = 'admin'"
@@ -254,12 +293,84 @@ def init_db():
     db_type = "MySQL" if USE_MYSQL else "SQLite"
     print(f"Database initialized successfully ({db_type})")
 
-# Initialize database on startup
-init_db()
+# Audit logging function
+def audit_log(action, success=True, details=None):
+    """Log security-relevant actions"""
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'user_id': session.get('user_id'),
+        'username': session.get('username'),
+        'action': action,
+        'success': success,
+        'details': details or {},
+        'ip': request.remote_addr,
+        'user_agent': request.user_agent.string[:100] if request.user_agent else 'Unknown'
+    }
+    
+    try:
+        with open('audit.log', 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception as e:
+        print(f"Error writing audit log: {e}")
 
-# Helper function to hash passwords
+# Helper function to hash passwords with salt
 def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password with salt using PBKDF2-SHA256"""
+    return generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
+
+def verify_password(stored_hash, provided_password):
+    """Verify password against stored hash"""
+    return check_password_hash(stored_hash, provided_password)
+
+# Input validation helpers
+def validate_decimal(value, field_name, min_value=0):
+    """Validate decimal input"""
+    try:
+        decimal_value = Decimal(str(value))
+        if decimal_value < min_value:
+            raise ValueError(f"{field_name} cannot be less than {min_value}")
+        return float(decimal_value)
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError(f"Invalid {field_name}")
+
+def validate_date(date_string):
+    """Validate date format"""
+    if not date_string:
+        return None
+    try:
+        return datetime.strptime(date_string, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Invalid date format. Use YYYY-MM-DD")
+
+def validate_payment_method(method):
+    """Validate payment method"""
+    if method not in ['cash', 'upi', None, '']:
+        raise ValueError("Payment method must be 'cash' or 'upi'")
+    return method
+
+# Session timeout check
+@app.before_request
+def check_session_timeout():
+    """Check for session timeout on inactivity"""
+    # Skip for login, logout, and static files
+    if request.endpoint in ['login', 'logout', 'serve_static', 'index']:
+        return
+    
+    # Skip for unauthenticated requests
+    if 'user_id' not in session:
+        return
+    
+    last_activity = session.get('last_activity')
+    now = datetime.now().timestamp()
+    
+    if last_activity:
+        if (now - last_activity) > SESSION_TIMEOUT:
+            username = session.get('username')
+            session.clear()
+            audit_log('SESSION_TIMEOUT', success=True, details={'reason': 'Inactivity timeout'})
+            return jsonify({'error': 'Session expired due to inactivity'}), 401
+    
+    session['last_activity'] = now
 
 # Serve static files
 @app.route('/')
@@ -272,6 +383,7 @@ def serve_static(path):
 
 # Authentication Routes
 @app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Max 5 login attempts per minute
 def login():
     try:
         data = request.json
@@ -279,22 +391,24 @@ def login():
         password = data.get('password')
         
         if not username or not password:
+            audit_log('LOGIN', success=False, details={'reason': 'Missing credentials'})
             return jsonify({'error': 'Username and password are required'}), 400
         
-        # Hash the password
-        password_hash = hash_password(password)
-        
-        # Check credentials
+        # Get user by username only (password_hash included for verification)
         placeholder = '%s' if USE_MYSQL else '?'
-        query = f"SELECT id, username, role FROM users WHERE username = {placeholder} AND password_hash = {placeholder}"
-        user = execute_query(query, (username, password_hash), fetch=True, fetchone=True)
+        query = f"SELECT id, username, role, password_hash FROM users WHERE username = {placeholder}"
+        user = execute_query(query, (username,), fetch=True, fetchone=True)
         
-        if user:
+        # Verify password with salt
+        if user and verify_password(user['password_hash'], password):
             # Set session
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
+            session['last_activity'] = datetime.now().timestamp()
             session.permanent = True
+            
+            audit_log('LOGIN', success=True, details={'username': username})
             
             return jsonify({
                 'message': 'Login successful',
@@ -302,14 +416,18 @@ def login():
                 'role': user['role']
             }), 200
         else:
+            audit_log('LOGIN', success=False, details={'username': username, 'reason': 'Invalid credentials'})
             return jsonify({'error': 'Invalid username or password'}), 401
             
     except Exception as e:
         print(f"Login error: {e}")
+        audit_log('LOGIN', success=False, details={'error': str(e)})
         return jsonify({'error': 'An error occurred during login'}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
+    username = session.get('username')
+    audit_log('LOGOUT', success=True, details={'username': username})
     session.clear()
     return jsonify({'message': 'Logged out successfully'}), 200
 
@@ -327,6 +445,20 @@ def check_auth():
 def save_transaction():
     try:
         data = request.json
+        
+        # Validate opening balance
+        try:
+            opening_balance = validate_decimal(data.get('openingBalance', 0), 'Opening balance')
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        
+        # Validate date if provided
+        entry_date = data.get('entryDate')
+        if entry_date:
+            try:
+                entry_date = validate_date(entry_date)
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
         
         # Get the user-selected date or use current timestamp
         entry_date = data.get('entryDate', None)
@@ -424,9 +556,11 @@ def delete_transaction(transaction_id):
     try:
         # Check if user is logged in and is owner
         if 'user_id' not in session:
+            audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'reason': 'Not authenticated'})
             return jsonify({'error': 'Not authenticated'}), 401
         
         if session.get('role') != 'owner':
+            audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'reason': 'Insufficient permissions', 'role': session.get('role')})
             return jsonify({'error': 'Only owners can delete transactions'}), 403
         
         # Delete the transaction
@@ -434,9 +568,11 @@ def delete_transaction(transaction_id):
         delete_query = f'DELETE FROM transactions WHERE id = {placeholder}'
         execute_query(delete_query, (transaction_id,))
         
+        audit_log('DELETE_TRANSACTION', success=True, details={'transaction_id': transaction_id})
         return jsonify({'message': 'Transaction deleted successfully'}), 200
     except Exception as e:
         print(f"Error deleting transaction: {e}")
+        audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'error': str(e)})
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/dashboard/balances', methods=['GET'])
@@ -611,6 +747,9 @@ def get_category_totals():
     except Exception as e:
         print(f"Error calculating category totals: {e}")
         return jsonify({'error': str(e)}), 500
+
+# Initialize database on startup
+init_db()
 
 if __name__ == '__main__':
     print("=" * 50)
