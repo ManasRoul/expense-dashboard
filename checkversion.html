@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Version Check</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .success { color: #4CAF50; font-weight: bold; }
+        .error { color: #f44336; font-weight: bold; }
+        .warning { color: #ff9800; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🔍 File Version Checker</h1>
+    
+    <div class="box">
+        <h2>Check categories.js Version</h2>
+        <button onclick="checkVersion()">Check File Version</button>
+        <button onclick="forceReload()">Force Reload (Clear Cache)</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Add a version marker to know which file is loaded
+        const CATEGORIES_JS_VERSION = '2026-05-24-v2';
+        const EXPECTED_FILE_SIZE = 11770; // approximate
+        
+        async function checkVersion() {
+            const resultDiv = document.getElementById('result');
+            let html = '<h3>File Version Check Results:</h3>';
+            
+            // Check 1: Fetch the file and check its size
+            html += '<h4>1. Checking file size...</h4>';
+            try {
+                const response = await fetch('/categories.js?' + Date.now());
+                const text = await response.text();
+                const actualSize = text.length;
+                
+                html += `<p>File size: ${actualSize} bytes</p>`;
+                html += `<p>Expected: ~${EXPECTED_FILE_SIZE} bytes</p>`;
+                
+                if (Math.abs(actualSize - EXPECTED_FILE_SIZE) < 1000) {
+                    html += `<p class="success">✅ File size looks correct</p>`;
+                } else {
+                    html += `<p class="error">❌ File size mismatch - OLD FILE!</p>`;
+                }
+                
+                // Check for version markers
+                html += '<h4>2. Checking content...</h4>';
+                
+                // New version has this code
+                if (text.includes('parseFloat(amount)')) {
+                    html += `<p class="success">✅ Has parseFloat fix (NEW VERSION)</p>`;
+                } else {
+                    html += `<p class="error">❌ Missing parseFloat fix (OLD VERSION)</p>`;
+                }
+                
+                // New version has better error messages
+                if (text.includes('Check browser console (F12) for more details')) {
+                    html += `<p class="success">✅ Has new error messages (NEW VERSION)</p>`;
+                } else {
+                    html += `<p class="error">❌ Has old error messages (OLD VERSION)</p>`;
+                }
+                
+                // Check for the old error messages
+                if (text.includes('Error loading income data')) {
+                    html += `<p class="error">❌ Contains OLD error messages</p>`;
+                } else {
+                    html += `<p class="success">✅ Old error messages removed</p>`;
+                }
+                
+                // Check for safety checks
+                if (text.includes('Skip if label not found')) {
+                    html += `<p class="success">✅ Has label safety checks (NEW VERSION)</p>`;
+                } else {
+                    html += `<p class="error">❌ Missing safety checks (OLD VERSION)</p>`;
+                }
+                
+                html += '<h4>3. Summary:</h4>';
+                const newVersionChecks = [
+                    text.includes('parseFloat(amount)'),
+                    text.includes('Check browser console (F12) for more details'),
+                    !text.includes('Error loading income data'),
+                    text.includes('Skip if label not found')
+                ];
+                
+                const passedChecks = newVersionChecks.filter(x => x).length;
+                
+                if (passedChecks === 4) {
+                    html += `<p class="success">✅✅✅ YOU HAVE THE NEW VERSION! (${passedChecks}/4 checks passed)</p>`;
+                    html += `<p>If it still shows errors, check browser console (F12) for the actual error message.</p>`;
+                } else {
+                    html += `<p class="error">❌❌❌ YOU HAVE THE OLD VERSION! (${passedChecks}/4 checks passed)</p>`;
+                    html += `<p><strong>ACTION REQUIRED:</strong></p>`;
+                    html += `<ol>`;
+                    html += `<li>Re-upload categories.js from your local folder</li>`;
+                    html += `<li>Make sure you're uploading the correct file</li>`;
+                    html += `<li>After upload, click "Force Reload" button above</li>`;
+                    html += `</ol>`;
+                }
+                
+                // Show first 500 chars of file for verification
+                html += '<h4>4. File Preview (first 500 characters):</h4>';
+                html += `<pre>${text.substring(0, 500)}...</pre>`;
+                
+            } catch (error) {
+                html += `<p class="error">❌ Error fetching file: ${error.message}</p>`;
+            }
+            
+            resultDiv.innerHTML = html;
+        }
+        
+        function forceReload() {
+            // Clear all caches and reload
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) caches.delete(name);
+                });
+            }
+            
+            // Add timestamp to force reload
+            window.location.href = window.location.href.split('?')[0] + '?t=' + Date.now();
+        }
+        
+        // Auto-run on page load
+        window.addEventListener('DOMContentLoaded', checkVersion);
+    </script>
+</body>
+</html>
