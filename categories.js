@@ -36,11 +36,30 @@ document.addEventListener('DOMContentLoaded', () => {
 // Load category totals
 async function loadCategoryData() {
     try {
-        const response = await fetch('http://localhost:5000/api/category-totals');
+        // Show loading state
+        document.getElementById('incomeGrid').innerHTML = '<div class="loading-message">📊 Loading income categories...</div>';
+        document.getElementById('expenseGrid').innerHTML = '<div class="loading-message">📊 Loading expense categories...</div>';
+        
+        // Fetch category totals
+        const response = await fetch('/api/category-totals', {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load category totals: ${response.status} ${response.statusText}`);
+        }
+        
         const data = await response.json();
 
         // Also load all transactions for details view
-        const transactionsResponse = await fetch('http://localhost:5000/api/transactions');
+        const transactionsResponse = await fetch('/api/transactions', {
+            credentials: 'include'
+        });
+        
+        if (!transactionsResponse.ok) {
+            throw new Error(`Failed to load transactions: ${transactionsResponse.status} ${transactionsResponse.statusText}`);
+        }
+        
         window.allTransactions = await transactionsResponse.json();
 
         // Calculate totals
@@ -121,8 +140,14 @@ async function loadCategoryData() {
 
     } catch (error) {
         console.error('Error loading category data:', error);
-        document.getElementById('incomeGrid').innerHTML = '<div class="no-data">Error loading income data</div>';
-        document.getElementById('expenseGrid').innerHTML = '<div class="no-data">Error loading expense data</div>';
+        const errorMsg = `<div class="error-message">
+            <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
+            <h3>Error Loading Data</h3>
+            <p>${error.message}</p>
+            <button onclick="location.reload()" class="btn btn-primary" style="margin-top: 10px;">🔄 Retry</button>
+        </div>`;
+        document.getElementById('incomeGrid').innerHTML = errorMsg;
+        document.getElementById('expenseGrid').innerHTML = '';
     }
 }
 
