@@ -1,24 +1,31 @@
 # Database Configuration
-# IMPORTANT: Update these values with your MySQL credentials before deployment
+# IMPORTANT: Use environment variables in production
 
-# For local development (SQLite)
-USE_MYSQL = False  # Set to True when deploying to live server
+import os
 
-# MySQL Configuration (for live server)
+# For local development (SQLite) or production (MySQL)
+USE_MYSQL = os.environ.get('USE_MYSQL', 'False') == 'True'
+
+# MySQL Configuration (use environment variables for security)
 MYSQL_CONFIG = {
-    'host': 'localhost',  # Change to your MySQL host (e.g., 'localhost' or 'mysql.yourhost.com')
-    'user': 'your_username',  # Your MySQL username
-    'password': 'your_password',  # Your MySQL password
-    'database': 'financial_dashboard',  # Your MySQL database name
-    'port': 3306,  # Default MySQL port
+    'host': os.environ.get('DB_HOST', 'localhost'),
+    'user': os.environ.get('DB_USER', 'root'),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'database': os.environ.get('DB_NAME', 'financial_dashboard'),
+    'port': int(os.environ.get('DB_PORT', '3306')),
 }
 
-# Security: For production, consider using environment variables:
-# import os
-# MYSQL_CONFIG = {
-#     'host': os.getenv('DB_HOST', 'localhost'),
-#     'user': os.getenv('DB_USER', 'root'),
-#     'password': os.getenv('DB_PASSWORD', ''),
-#     'database': os.getenv('DB_NAME', 'financial_dashboard'),
-#     'port': int(os.getenv('DB_PORT', 3306)),
-# }
+# Security warning if using defaults in MySQL mode
+if USE_MYSQL and not os.environ.get('DB_PASSWORD'):
+    print("⚠️  WARNING: No DB_PASSWORD set in environment!")
+    print("   Set environment variables before running in production.")
+
+# To set environment variables:
+# export SECRET_KEY=your-secret-key-here
+# export USE_MYSQL=True
+# export DB_HOST=localhost
+# export DB_USER=your_username
+# export DB_PASSWORD=your_password
+# export DB_NAME=financial_dashboard
+# export DB_PORT=3306
+# export ALLOWED_ORIGINS=https://yourdomain.com
