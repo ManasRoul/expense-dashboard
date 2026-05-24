@@ -77,6 +77,12 @@ async function loadCategoryData() {
             totalIncome += numAmount;
             const label = incomeLabels[category];
             
+            // Skip if label not found
+            if (!label) {
+                console.warn(`No label found for income category: ${category}`);
+                return;
+            }
+            
             // Count number of entries for this category
             const entryCount = window.allTransactions.filter(t => {
                 const amt = parseFloat(t[category]) || 0;
@@ -112,6 +118,12 @@ async function loadCategoryData() {
             totalExpense += numAmount;
             const label = expenseLabels[category];
             
+            // Skip if label not found
+            if (!label) {
+                console.warn(`No label found for expense category: ${category}`);
+                return;
+            }
+            
             // Count number of entries for this category
             const entryCount = window.allTransactions.filter(t => {
                 const amt = parseFloat(t[category]) || 0;
@@ -136,10 +148,12 @@ async function loadCategoryData() {
             expenseGrid.appendChild(card);
         });
 
-        // Update summary totals
-        document.getElementById('totalIncome').textContent = `₹${totalIncome.toFixed(2)}`;
-        document.getElementById('totalExpense').textContent = `₹${totalExpense.toFixed(2)}`;
-
+        // Uole.error('Error stack:', error.stack);
+        const errorMsg = `<div class="error-message">
+            <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
+            <h3>Error Loading Data</h3>
+            <p><strong>Error:</strong> ${error.message}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">Check browser console (F12) for more details
     } catch (error) {
         console.error('Error loading category data:', error);
         const errorMsg = `<div class="error-message">
