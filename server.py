@@ -749,7 +749,21 @@ def get_category_totals():
         return jsonify({'error': str(e)}), 500
 
 # Initialize database on startup
-init_db()
+try:
+    print("[server.py] Initializing database...")
+    print(f"[server.py] USE_MYSQL = {USE_MYSQL}")
+    if USE_MYSQL:
+        print(f"[server.py] DB_HOST = {MYSQL_CONFIG['host']}")
+        print(f"[server.py] DB_USER = {MYSQL_CONFIG['user']}")
+        print(f"[server.py] DB_NAME = {MYSQL_CONFIG['database']}")
+    init_db()
+    print("[server.py] Database initialized successfully")
+except Exception as e:
+    print(f"[server.py] ERROR: Failed to initialize database: {e}")
+    import traceback
+    traceback.print_exc()
+    # Don't crash the app, but log the error
+    print("[server.py] App will continue but database may not be accessible")
 
 if __name__ == '__main__':
     print("=" * 50)
