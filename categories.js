@@ -148,18 +148,18 @@ async function loadCategoryData() {
             expenseGrid.appendChild(card);
         });
 
-        // Uole.error('Error stack:', error.stack);
+        // Update summary totals
+        document.getElementById('totalIncome').textContent = `₹${totalIncome.toFixed(2)}`;
+        document.getElementById('totalExpense').textContent = `₹${totalExpense.toFixed(2)}`;
+
+    } catch (error) {
+        console.error('Error loading category data:', error);
+        console.error('Error stack:', error.stack);
         const errorMsg = `<div class="error-message">
             <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
             <h3>Error Loading Data</h3>
             <p><strong>Error:</strong> ${error.message}</p>
-            <p style="font-size: 12px; color: #666; margin-top: 10px;">Check browser console (F12) for more details
-    } catch (error) {
-        console.error('Error loading category data:', error);
-        const errorMsg = `<div class="error-message">
-            <div style="font-size: 48px; margin-bottom: 10px;">❌</div>
-            <h3>Error Loading Data</h3>
-            <p>${error.message}</p>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">Check browser console (F12) for more details</p>
             <button onclick="location.reload()" class="btn btn-primary" style="margin-top: 10px;">🔄 Retry</button>
         </div>`;
         document.getElementById('incomeGrid').innerHTML = errorMsg;
