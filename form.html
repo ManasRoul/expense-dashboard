@@ -5,11 +5,191 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Income/Receipt Form</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        .category-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .category-header label {
+            font-weight: 600;
+            color: #1e293b;
+            margin: 0;
+        }
+
+        .category-total {
+            font-size: 0.9em;
+            color: #64748b;
+            font-weight: 600;
+        }
+
+        .entries-container {
+            margin-bottom: 10px;
+        }
+
+        .entry-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 2fr 40px;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .entry-row.salary-entry {
+            grid-template-columns: 120px 100px 100px 1fr 2fr 40px;
+        }
+
+        .entry-row .payment-select,
+        .entry-row .employee-select,
+        .entry-row .payment-type-select {
+            padding: 8px 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9em;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            background-size: 16px;
+            padding-right: 32px;
+        }
+
+        .entry-row .payment-select {
+            min-width: 100px;
+        }
+
+        .entry-row .employee-select {
+            min-width: 110px;
+        }
+
+        .entry-row .payment-type-select {
+            min-width: 90px;
+        }
+
+        .entry-row .payment-select:focus,
+        .entry-row .employee-select:focus,
+        .entry-row .payment-type-select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .entry-row .payment-select:hover,
+        .entry-row .employee-select:hover,
+        .entry-row .payment-type-select:hover {
+            border-color: #3b82f6;
+            background: #f8fafc;
+        }
+
+        /* Style for empty/placeholder option */
+        .entry-row select option:first-child {
+            color: #9ca3af;
+            font-style: italic;
+        }
+
+        /* Input fields styling */
+        .entry-row .amount-input,
+        .entry-row .comment-input {
+            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9em;
+            background: white;
+            transition: all 0.2s ease;
+        }
+
+        .entry-row .amount-input:focus,
+        .entry-row .comment-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn-add-entry {
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-add-entry:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+
+        .btn-remove-entry {
+            width: 32px;
+            height: 32px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            line-height: 1;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-remove-entry:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        /* Responsive design for all entries */
+        @media (max-width: 768px) {
+            .entry-row,
+            .entry-row.salary-entry {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .entry-row select,
+            .entry-row input {
+                width: 100%;
+                min-width: auto;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .entry-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .btn-remove-entry {
+                justify-self: end;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="nav-links">
         <a href="dashboard.html" class="nav-btn">← Dashboard</a>
         <a href="categories.html" class="nav-btn">📊 Categories</a>
+        <a href="salary.html" class="nav-btn">💰 Salary</a>
     </div>
     <div class="container">
         <h1>Financial Form</h1>
@@ -28,91 +208,15 @@
             <div class="section">
                 <h2>1. Opening Balance (₹)</h2>
                 <div class="form-group">
-                    <input type="number" id="openingBalance" name="openingBalance" step="0.01" placeholder="Enter opening balance (₹)">
+                    <input type="number" id="openingBalance" name="openingBalance" step="0.01" placeholder="Enter opening balance (₹)" oninput="calculateTotal()">
                 </div>
             </div>
 
             <!-- Income/Receipt Section -->
             <div class="section">
                 <h2>2. Income/Receipt</h2>
-
-                <!-- Receipt Categories -->
-                <div class="receipt-items">
-                    <!-- <h3>Receipt Categories</h3> -->
-                    
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Room Rent</label>
-                        <div class="input-group">
-                            <select id="roomRentMethod" name="roomRentMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="roomRent" name="roomRent" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Mattress Charge</label>
-                        <div class="input-group">
-                            <select id="mattressChargeMethod" name="mattressChargeMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="mattressCharge" name="mattressCharge" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Travel/Cab Service</label>
-                        <div class="input-group">
-                            <select id="travelCabMethod" name="travelCabMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="travelCab" name="travelCab" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Kitchen Facility</label>
-                        <div class="input-group">
-                            <select id="kitchenFacilityMethod" name="kitchenFacilityMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="kitchenFacility" name="kitchenFacility" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Cleaning Charge</label>
-                        <div class="input-group">
-                            <select id="cleanChargeMethod" name="cleanChargeMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="cleanCharge" name="cleanCharge" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Misc Receipt</label>
-                        <div class="input-group">
-                            <select id="miscReceiptMethod" name="miscReceiptMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="miscReceipt" name="miscReceipt" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-                </div>
-
+                <div id="incomeCategories"></div>
+                
                 <!-- Total Income -->
                 <div class="form-group total">
                     <label for="totalIncome">Total Income/Receipt (₹)</label>
@@ -123,215 +227,7 @@
             <!-- Expense/Payment Section -->
             <div class="section">
                 <h2>3. Expense/Payment</h2>
-
-                <!-- Expense Categories -->
-                <div class="receipt-items">
-                    <!-- <h3>Expense Categories</h3> -->
-                    
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Brokerage</label>
-                        <div class="input-group">
-                            <select id="brokerageMethod" name="brokerageMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="brokerage" name="brokerage" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Salary</label>
-                        <div class="input-group">
-                            <select id="salaryMethod" name="salaryMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="salary" name="salary" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Room Cleaning Charge</label>
-                        <div class="input-group">
-                            <select id="roomCleaningChargeMethod" name="roomCleaningChargeMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="roomCleaningCharge" name="roomCleaningCharge" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Generator & Maintenance</label>
-                        <div class="input-group">
-                            <select id="generatorMaintenanceMethod" name="generatorMaintenanceMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="generatorMaintenance" name="generatorMaintenance" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Hotel Stationary</label>
-                        <div class="input-group">
-                            <select id="hotelStationaryMethod" name="hotelStationaryMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="hotelStationary" name="hotelStationary" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Hotel Cleaning and Sanitation</label>
-                        <div class="input-group">
-                            <select id="hotelCleaningSanitationMethod" name="hotelCleaningSanitationMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="hotelCleaningSanitation" name="hotelCleaningSanitation" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Rent & Taxes</label>
-                        <div class="input-group">
-                            <select id="rentTaxesMethod" name="rentTaxesMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="rentTaxes" name="rentTaxes" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>TV Recharge</label>
-                        <div class="input-group">
-                            <select id="tvRechargeMethod" name="tvRechargeMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="tvRecharge" name="tvRecharge" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Camera/WiFi</label>
-                        <div class="input-group">
-                            <select id="cameraWifiMethod" name="cameraWifiMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="cameraWifi" name="cameraWifi" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Plumbing & Maintenance</label>
-                        <div class="input-group">
-                            <select id="plumbingMaintenanceMethod" name="plumbingMaintenanceMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="plumbingMaintenance" name="plumbingMaintenance" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Electricity & Maintenance</label>
-                        <div class="input-group">
-                            <select id="electricityMaintenanceMethod" name="electricityMaintenanceMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="electricityMaintenance" name="electricityMaintenance" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Electricity Bill</label>
-                        <div class="input-group">
-                            <select id="electricityBillMethod" name="electricityBillMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="electricityBill" name="electricityBill" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Staff Fooding</label>
-                        <div class="input-group">
-                            <select id="staffFoodingMethod" name="staffFoodingMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="staffFooding" name="staffFooding" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Laundry</label>
-                        <div class="input-group">
-                            <select id="laundryMethod" name="laundryMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="laundry" name="laundry" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Owner Kitchen & Cab Payment</label>
-                        <div class="input-group">
-                            <select id="ownerKitchenCabMethod" name="ownerKitchenCabMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="ownerKitchenCab" name="ownerKitchenCab" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Office Stationary</label>
-                        <div class="input-group">
-                            <select id="officeStationaryMethod" name="officeStationaryMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="officeStationary" name="officeStationary" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <label><span class="badge-bullet"></span>Misc Expenses</label>
-                        <div class="input-group">
-                            <select id="miscExpensesMethod" name="miscExpensesMethod" class="payment-select">
-                                <option value="">Payment</option>
-                                <option value="cash">Cash</option>
-                                <option value="upi">UPI</option>
-                            </select>
-                            <input type="number" id="miscExpenses" name="miscExpenses" step="0.01" placeholder="0.00" class="amount-input">
-                        </div>
-                    </div>
-                </div>
+                <div id="expenseCategories"></div>
 
                 <!-- Total Expense -->
                 <div class="form-group total">
@@ -346,7 +242,6 @@
                 <div class="form-group total">
                     <input type="number" id="closingBalance" name="closingBalance" step="0.01" readonly>
                 </div>
-                <!-- <p class="balance-formula">Formula: Opening Balance + Total Income - Total Expense</p> -->
             </div>
 
             <!-- Action Buttons -->
@@ -359,6 +254,6 @@
     </div>
 
     <script src="auth.js"></script>
-    <script src="script.js"></script>
+    <script src="script-multi.js"></script>
 </body>
 </html>

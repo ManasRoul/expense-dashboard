@@ -11,6 +11,15 @@ if project_home not in sys.path:
 VENV_PATH = os.path.join(project_home, 'venv', 'bin', 'activate_this.py')
 if os.path.exists(VENV_PATH):
     exec(open(VENV_PATH).read(), {'__file__': VENV_PATH})
+else:
+    # Modern venv (python -m venv) doesn't have activate_this.py
+    # Manually add the site-packages to sys.path
+    import site
+    import glob
+    venv_site = os.path.join(project_home, 'venv', 'lib')
+    site_packages = glob.glob(os.path.join(venv_site, 'python*', 'site-packages'))
+    if site_packages:
+        site.addsitedir(site_packages[0])
 
 # Load environment variables from .env if it exists
 env_file = os.path.join(project_home, '.env')

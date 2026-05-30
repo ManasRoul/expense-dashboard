@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Status Check</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .status-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-box h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .test {
+            padding: 10px;
+            margin: 10px 0;
+            border-left: 4px solid #ccc;
+            background: #f9f9f9;
+        }
+        .test.success {
+            border-left-color: #4CAF50;
+            background: #e8f5e9;
+        }
+        .test.error {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        .test.pending {
+            border-left-color: #ff9800;
+            background: #fff3e0;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-box">
+        <h2>🔍 Server Status Diagnostic</h2>
+        <p>This page will test if your Flask API server is running and accessible.</p>
+        <button onclick="runTests()">Run Diagnostic Tests</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        async function runTests() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="status-box"><h2>Running Tests...</h2></div>';
+            
+            const tests = [];
+            
+            // Test 1: Check if we can reach the page
+            tests.push({
+                name: 'Static File Serving',
+                description: 'Can load HTML/CSS/JS files',
+                status: 'success',
+                message: 'This page loaded successfully!'
+            });
+            
+            // Test 2: Test API endpoint
+            try {
+                const response = await fetch('/api/dashboard/balances', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    tests.push({
+                        name: 'API Server Running',
+                        description: 'Flask server is responding',
+                        status: 'success',
+                        message: `API returned status ${response.status}`
+                    });
+                } else if (response.status === 401) {
+                    tests.push({
+                        name: 'API Server Running',
+                        description: 'Flask server is responding',
+                        status: 'success',
+                        message: 'API is running (401 = not logged in, which is expected)'
+                    });
+                } else {
+                    tests.push({
+                        name: 'API Server Running',
+                        description: 'Flask server responded with error',
+                        status: 'error',
+                        message: `API returned status ${response.status}: ${response.statusText}`
+                    });
+                }
+            } catch (error) {
+                tests.push({
+                    name: 'API Server Running',
+                    description: 'Cannot connect to Flask server',
+                    status: 'error',
+                    message: `Connection failed: ${error.message}`
+                });
+            }
+            
+            // Test 3: Test login endpoint
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: 'test', password: 'test' }),
+                    credentials: 'include'
+                });
+                
+                tests.push({
+                    name: 'Login Endpoint',
+                    description: 'Login API is accessible',
+                    status: response.ok || response.status === 401 ? 'success' : 'error',
+                    message: `Login endpoint returned status ${response.status}`
+                });
+            } catch (error) {
+                tests.push({
+                    name: 'Login Endpoint',
+                    description: 'Cannot reach login endpoint',
+                    status: 'error',
+                    message: `Connection failed: ${error.message}`
+                });
+            }
+            
+            // Display results
+            let html = '<div class="status-box"><h2>📊 Test Results</h2>';
+            
+            tests.forEach(test => {
+                html += `
+                    <div class="test ${test.status}">
+                        <h3>${test.name}</h3>
+                        <p><strong>${test.description}</strong></p>
+                        <p>${test.message}</p>
+                    </div>
+                `;
+            });
+            
+            const allSuccess = tests.every(t => t.status === 'success');
+            
+            if (allSuccess) {
+                html += `
+                    <div style="background: #4CAF50; color: white; padding: 15px; border-radius: 4px; margin-top: 20px;">
+                        <strong>✅ All tests passed!</strong> Your server is running correctly.
+                        <br><br>
+                        <a href="/login.html" style="color: white; text-decoration: underline;">Go to Login Page</a>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="background: #f44336; color: white; padding: 15px; border-radius: 4px; margin-top: 20px;">
+                        <strong>❌ Some tests failed.</strong> Check the logs and configuration.
+                        <br><br>
+                        <strong>Next Steps:</strong>
+                        <ol style="margin: 10px 0;">
+                            <li>Check if Python app is running in cPanel</li>
+                            <li>Verify .env file exists with correct credentials</li>
+                            <li>Check passenger.log: tail -50 /home/sagaufqr/logs/passenger.log</li>
+                            <li>Run diagnostic: python3 test_import.py</li>
+                        </ol>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

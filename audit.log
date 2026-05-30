@@ -1,3 +1,62 @@
 {"timestamp": "2026-05-24T12:50:23.985644", "user_id": null, "username": null, "action": "LOGOUT", "success": true, "details": {"username": null}, "ip": "127.0.0.1", "user_agent": "Unknown"}
 {"timestamp": "2026-05-24T12:50:45.711724", "user_id": null, "username": null, "action": "LOGIN", "success": false, "details": {"username": "admin", "reason": "Invalid credentials"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
 {"timestamp": "2026-05-24T12:52:54.306633", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-24T20:12:25.732492", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T16:53:52.368067", "user_id": null, "username": null, "action": "LOGOUT", "success": true, "details": {"username": null}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T17:38:13.037116", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T18:27:25.245901", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T18:27:25.245946", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T18:49:36.044111", "user_id": null, "username": null, "action": "LOGOUT", "success": true, "details": {"username": null}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T18:50:00.561047", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T23:32:17.900094", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-25T23:34:30.608606", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T00:19:01.033357", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T08:25:09.625119", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T09:31:32.754275", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T12:53:33.709213", "user_id": null, "username": null, "action": "LOGOUT", "success": true, "details": {"username": null}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T15:09:01.601365", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T18:28:46.716813", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T18:28:46.717875", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T18:28:46.715652", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T18:29:01.194036", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T20:44:11.564041", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:18:53.266964", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:19:48.578423", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:20:01.993017", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:20:11.678356", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:20:21.779051", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:21:49.363476", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:22:14.894539", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:23:11.227195", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:28:18.206339", "user_id": null, "username": null, "action": "LOGOUT", "success": true, "details": {"username": null}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:28:26.290621", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:34:49.806026", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:34:57.115401", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:36:33.446854", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:37:59.237424", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:45:16.724701", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T21:50:24.203360", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:06:05.149230", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:06:14.391388", "user_id": 2, "username": "user", "action": "LOGIN", "success": true, "details": {"username": "user"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:12:53.357844", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:21:25.706257", "user_id": 2, "username": "user", "action": "LOGOUT", "success": true, "details": {"username": "user"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:21:49.037039", "user_id": 2, "username": "user", "action": "LOGIN", "success": true, "details": {"username": "user"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-26T22:24:53.074035", "user_id": 2, "username": "user", "action": "LOGOUT", "success": true, "details": {"username": "user"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-27T23:51:56.270260", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-27T23:51:56.270104", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-27T23:52:05.553223", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T00:01:14.939526", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T00:38:21.311612", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T00:38:21.310680", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T00:38:21.312241", "user_id": null, "username": null, "action": "SESSION_TIMEOUT", "success": true, "details": {"reason": "Inactivity timeout"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T00:38:28.401417", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:03:37.221750", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:04:58.130653", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:05:27.484168", "user_id": 1, "username": "admin", "action": "DELETE_TRANSACTION", "success": true, "details": {"transaction_id": 14}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:22:37.232676", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:23:10.966708", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T01:24:55.852414", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T08:30:01.216191", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-28T08:48:28.960557", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-30T12:32:25.917292", "user_id": 1, "username": "admin", "action": "LOGIN", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}
+{"timestamp": "2026-05-30T12:42:11.431428", "user_id": 1, "username": "admin", "action": "LOGOUT", "success": true, "details": {"username": "admin"}, "ip": "127.0.0.1", "user_agent": "Unknown"}

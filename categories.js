@@ -252,7 +252,7 @@ async function showCategoryDetails(category, type, categoryName) {
             
             tableHTML += `
                 <tr>
-                    <td>${new Date(t.date).toLocaleString()}</td>
+                    <td>${new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td>${methodBadge}</td>
                     <td class="amount-cell ${type === 'income' ? 'positive' : 'negative'}">₹${t.amount.toFixed(2)}</td>
                 </tr>
@@ -282,9 +282,9 @@ function closeDetailsModal() {
 }
 
 // Close modal when clicking outside
-window.onclick = function(event) {
+window.addEventListener('click', function(event) {
     const modal = document.getElementById('categoryModal');
     if (event.target === modal) {
         closeDetailsModal();
     }
-}
+});

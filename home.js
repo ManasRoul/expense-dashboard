@@ -1,11 +1,14 @@
-// Check if user is logged in
-if (localStorage.getItem('isLoggedIn') !== 'true') {
-    window.location.href = 'login.html';
-}
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if user is logged in
+    if (localStorage.getItem('isLoggedIn') !== 'true') {
+        window.location.href = 'login.html';
+        return;
+    }
 
-// Display username
-const username = localStorage.getItem('username') || 'User';
-document.getElementById('username').textContent = username;
+    // Display username
+    const username = localStorage.getItem('username') || 'User';
+    document.getElementById('username').textContent = username;
+});
 
 // Navigation function
 function navigateTo(page) {
@@ -21,7 +24,7 @@ function logout() {
         localStorage.removeItem('userRole');
         
         // Call logout endpoint
-        fetch('http://localhost:5000/api/logout', {
+        fetch('/api/logout', {
             method: 'POST',
             credentials: 'include'
         }).then(() => {

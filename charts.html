@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charts - Financial Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .charts-container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .chart-card { background: white; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        .chart-card h2 { margin: 0 0 15px; color: #1e293b; }
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        @media (max-width: 768px) { .chart-row { grid-template-columns: 1fr; } }
+        canvas { max-height: 350px; }
+        .tabs { display: flex; gap: 0; margin-bottom: 25px; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        .tab-btn { flex: 1; padding: 14px 20px; border: none; background: white; font-size: 15px; font-weight: 600; cursor: pointer; color: #64748b; transition: all 0.2s; }
+        .tab-btn.active { background: linear-gradient(135deg, #3b82f6, #6366f1); color: white; }
+        .tab-btn:hover:not(.active) { background: #f1f5f9; }
+        .filter-bar { display: flex; align-items: center; gap: 15px; padding: 15px 25px; background: white; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        .filter-bar label { font-weight: 600; color: #1e293b; }
+        .filter-bar select { padding: 8px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>📈 Financial Charts</h1>
+            <div class="header-actions">
+                <a href="dashboard.html" class="btn btn-secondary">← Dashboard</a>
+            </div>
+        </header>
+
+        <div class="charts-container">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('monthly')">📅 Monthly</button>
+                <button class="tab-btn" onclick="switchTab('yearly')">📊 Yearly</button>
+            </div>
+
+            <!-- Monthly Tab -->
+            <div id="tab-monthly" class="tab-content active">
+                <div class="filter-bar">
+                    <label>📅 Month:</label>
+                    <select id="monthFilter" onchange="renderMonthlyTab()"></select>
+                </div>
+                <div class="chart-card">
+                    <h2>📊 Daily Balance Trend</h2>
+                    <canvas id="monthBalanceChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h2>📉 Daily Income vs Expense</h2>
+                    <canvas id="monthDailyChart"></canvas>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-card">
+                        <h2>💰 Income by Category</h2>
+                        <canvas id="monthIncomeChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h2>💸 Expense by Category</h2>
+                        <canvas id="monthExpenseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Yearly Tab -->
+            <div id="tab-yearly" class="tab-content">
+                <div class="chart-card">
+                    <h2>📊 Yearly Income vs Expense</h2>
+                    <canvas id="yearMonthlyChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h2>📊 Yearly Balance Trend</h2>
+                    <canvas id="yearBalanceChart"></canvas>
+                </div>
+                <div class="filter-bar">
+                    <label>📅 Category breakdown for:</label>
+                    <select id="yearFilter" onchange="renderYearDoughnuts()"></select>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-card">
+                        <h2>💰 Income by Category</h2>
+                        <canvas id="yearIncomeChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h2>💸 Expense by Category</h2>
+                        <canvas id="yearExpenseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="charts.js"></script>
+</body>
+</html>

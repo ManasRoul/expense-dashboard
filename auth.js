@@ -6,6 +6,18 @@
         return;
     }
     
+    // Verify session with server
+    fetch('/api/check-auth', { credentials: 'include' })
+        .then(res => {
+            if (!res.ok) {
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('username');
+                localStorage.removeItem('userRole');
+                window.location.href = 'login.html';
+            }
+        })
+        .catch(() => {});
+    
     // Add top navigation bar
     function addTopNav() {
         // Check if top nav already exists
@@ -26,6 +38,7 @@
                 </div>
                 <div class="auth-buttons">
                     <a href="home.html" class="btn-home-top">🏠 Home</a>
+                    ${userRole === 'owner' ? '<a href="settings.html" class="btn-home-top">⚙️ Settings</a>' : ''}
                     <button class="btn-logout-top" id="authLogoutBtn">🚪 Logout</button>
                 </div>
             </div>
@@ -40,7 +53,7 @@
                 localStorage.removeItem('username');
                 localStorage.removeItem('userRole');
                 
-                fetch('http://localhost:5000/api/logout', {
+                fetch('/api/logout', {
                     method: 'POST',
                     credentials: 'include'
                 }).finally(() => {

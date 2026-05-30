@@ -231,6 +231,31 @@ h1 {
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.comment-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 0.85em;
+    color: #6b7280;
+    font-style: italic;
+    transition: all 0.3s ease;
+}
+
+.comment-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    font-style: normal;
+    color: #374151;
+}
+
+.comment-input::placeholder {
+    color: #9ca3af;
+    font-style: italic;
 }
 
 .form-group input,
@@ -269,28 +294,29 @@ h1 {
 }
 
 .closing-balance-section {
-    background: #fef3c7;
-    border-left: 5px solid #f59e0b;
+    background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%);
+    border-left: 5px solid #10b981;
 }
 
 .closing-balance-section h2 {
-    color: #92400e;
+    color: #065f46;
 }
 
 .closing-balance-section .form-group.total label {
-    color: #92400e;
+    color: #065f46;
     font-size: 1.05em;
 }
 
 .closing-balance-section .form-group.total input {
-    color: #92400e;
+    color: #047857;
     background-color: #fff;
-    border: 2px solid #f59e0b;
+    border: 2px solid #10b981;
     font-size: 1.05em;
+    font-weight: 600;
 }
 
 .balance-formula {
-    color: #92400e;
+    color: #065f46;
     font-size: 0.85em;
     font-style: italic;
     margin-top: 8px;

@@ -72,6 +72,16 @@ body {
     transform: translateY(-2px);
 }
 
+.btn-info {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: white;
+}
+
+.btn-info:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
 /* Summary Cards */
 .summary-grid {
     display: grid;
@@ -212,6 +222,26 @@ body {
     font-style: italic;
     padding: 40px;
     grid-column: 1 / -1;
+}
+
+.error-message {
+    text-align: center;
+    color: #dc2626;
+    padding: 40px;
+    grid-column: 1 / -1;
+    background: #fee2e2;
+    border-radius: 8px;
+    border: 2px solid #fca5a5;
+}
+
+.error-message h3 {
+    color: #991b1b;
+    margin: 10px 0;
+}
+
+.error-message p {
+    color: #7f1d1d;
+    margin: 10px 0;
 }
 
 .no-data {

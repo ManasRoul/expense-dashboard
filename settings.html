@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Financial Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <style>
+        .settings-container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+        .settings-section { background: white; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        .settings-section h2 { margin: 0 0 20px; color: #1e293b; display: flex; align-items: center; gap: 10px; }
+        .add-form { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .add-form input { flex: 1; min-width: 200px; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
+        .add-form input:focus { outline: none; border-color: #3b82f6; }
+        .add-form button { padding: 10px 20px; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+        .add-form button:hover { background: #2563eb; }
+        .items-list { list-style: none; padding: 0; margin: 0; }
+        .items-list li { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; transition: all 0.2s; }
+        .items-list li:hover { border-color: #3b82f6; background: #f8fafc; }
+        .item-label { font-weight: 500; color: #334155; }
+        .item-key { font-size: 0.8em; color: #94a3b8; margin-left: 8px; }
+        .item-actions { display: flex; gap: 8px; }
+        .btn-edit, .btn-del { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .btn-edit { background: #f59e0b; color: white; }
+        .btn-edit:hover { background: #d97706; }
+        .btn-del { background: #ef4444; color: white; }
+        .btn-del:hover { background: #dc2626; }
+        .empty-msg { color: #94a3b8; text-align: center; padding: 20px; font-style: italic; }
+        .header-actions { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>⚙️ Settings</h1>
+            <div class="header-actions">
+                <!-- <a href="home.html" class="btn btn-secondary">🏠 Home</a> -->
+                <a href="dashboard.html" class="btn btn-secondary">← Dashboard</a>
+            </div>
+        </header>
+
+        <div class="settings-container">
+            <!-- Employees Section -->
+            <div class="settings-section">
+                <h2>👤 Employees (Salary Page)</h2>
+                <div class="add-form">
+                    <input type="text" id="newEmployeeName" placeholder="Employee name (e.g. Ravi)">
+                    <button onclick="addItem('employee')">+ Add Employee</button>
+                </div>
+                <ul class="items-list" id="employeeList"></ul>
+            </div>
+
+            <!-- Income Categories Section -->
+            <div class="settings-section">
+                <h2>💰 Income Categories</h2>
+                <div class="add-form">
+                    <input type="text" id="newIncomeName" placeholder="Category name (e.g. Parking Fee)">
+                    <button onclick="addItem('income_category')">+ Add Income Category</button>
+                </div>
+                <ul class="items-list" id="incomeCategoryList"></ul>
+            </div>
+
+            <!-- Expense Categories Section -->
+            <div class="settings-section">
+                <h2>💸 Expense Categories</h2>
+                <div class="add-form">
+                    <input type="text" id="newExpenseName" placeholder="Category name (e.g. Water Bill)">
+                    <button onclick="addItem('expense_category')">+ Add Expense Category</button>
+                </div>
+                <ul class="items-list" id="expenseCategoryList"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Income/Receipt Form</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .category-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .category-header label {
+            font-weight: 600;
+            color: #1e293b;
+            margin: 0;
+        }
+
+        .category-total {
+            font-size: 0.9em;
+            color: #64748b;
+            font-weight: 600;
+        }
+
+        .entries-container {
+            margin-bottom: 10px;
+        }
+
+        .entry-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 2fr 40px;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .entry-row .payment-select {
+            min-width: 100px;
+        }
+
+        .btn-add-entry {
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-add-entry:hover {
+            background: #059669;
+        }
+
+        .btn-remove-entry {
+            width: 32px;
+            height: 32px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            line-height: 1;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-remove-entry:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 768px) {
+            .entry-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .btn-remove-entry {
+                justify-self: end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-links">
+        <a href="dashboard.html" class="nav-btn">← Dashboard</a>
+        <a href="categories.html" class="nav-btn">📊 Categories</a>
+        <a href="salary.html" class="nav-btn">💰 Salary</a>
+    </div>
+    <div class="container">
+        <h1>Financial Form</h1>
+        
+        <form id="financialForm">
+            <!-- Date Selection Section -->
+            <div class="section date-section">
+                <div class="form-group">
+                    <label for="entryDate">📅 Entry Date</label>
+                    <input type="date" id="entryDate" name="entryDate" required>
+                    <small class="form-hint">Select the date for this transaction (defaults to today)</small>
+                </div>
+            </div>
+
+            <!-- Opening Balance Section -->
+            <div class="section">
+                <h2>1. Opening Balance (₹)</h2>
+                <div class="form-group">
+                    <input type="number" id="openingBalance" name="openingBalance" step="0.01" placeholder="Enter opening balance (₹)">
+                </div>
+            </div>
+
+            <!-- Income/Receipt Section -->
+            <div class="section">
+                <h2>2. Income/Receipt</h2>
+                <div id="incomeCategories"></div>
+                
+                <!-- Total Income -->
+                <div class="form-group total">
+                    <label for="totalIncome">Total Income/Receipt (₹)</label>
+                    <input type="number" id="totalIncome" name="totalIncome" step="0.01" readonly>
+                </div>
+            </div>
+
+            <!-- Expense/Payment Section -->
+            <div class="section">
+                <h2>3. Expense/Payment</h2>
+                <div id="expenseCategories"></div>
+
+                <!-- Total Expense -->
+                <div class="form-group total">
+                    <label for="totalExpense">Total Expense/Payment (₹)</label>
+                    <input type="number" id="totalExpense" name="totalExpense" step="0.01" readonly>
+                </div>
+            </div>
+
+            <!-- Closing Balance Section -->
+            <div class="section closing-balance-section">
+                <h2>4. Closing Balance (₹)</h2>
+                <div class="form-group total">
+                    <input type="number" id="closingBalance" name="closingBalance" step="0.01" readonly>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="button-group">
+                <button type="button" class="btn btn-calculate" onclick="calculateTotal()">Calculate Total</button>
+                <button type="submit" class="btn btn-primary">Submit</button>
+                <button type="reset" class="btn btn-secondary">Reset</button>
+            </div>
+        </form>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="script-multi.js"></script>
+</body>
+</html>

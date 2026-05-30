@@ -12,7 +12,9 @@
             <h1>💰 Financial Dashboard</h1>
             <div class="header-actions">
                 <button onclick="openDownloadModal()" class="btn btn-download">📥 Download Report</button>
+                <a href="charts.html" class="btn btn-info">📈 Charts</a>
                 <a href="categories.html" class="btn btn-info">📊 Category View</a>
+                <a href="salary.html" class="btn btn-info">💰 Salary</a>
                 <a href="form.html" class="btn btn-primary">+ New Entry</a>
                 <button onclick="refreshDashboard(this)" class="btn btn-secondary">🔄 Refresh</button>
             </div>
@@ -60,7 +62,17 @@
 
         <!-- Recent Transactions -->
         <div class="transactions-section">
-            <h2>Recent Transactions</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Recent Transactions</h2>
+                <div class="date-filter-container">
+                    <label for="filterFromDate">From:</label>
+                    <input type="date" id="filterFromDate" class="date-filter-input">
+                    <label for="filterToDate">To:</label>
+                    <input type="date" id="filterToDate" class="date-filter-input">
+                    <button class="btn btn-primary" onclick="applyDateFilter()">Filter</button>
+                    <button class="btn btn-secondary" onclick="clearDateFilter()">Clear</button>
+                </div>
+            </div>
             <div class="table-container">
                 <table id="transactionsTable">
                     <thead>
@@ -147,7 +159,6 @@
                     </div>
                 </div>
             </div>
-        </div>
         </div>
     </div>
 
