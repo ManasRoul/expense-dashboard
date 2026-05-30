@@ -375,8 +375,8 @@ async function generateReport() {
     }
     
     try {
-        // Fetch transactions for the date range
-        const response = await fetch('/api/transactions', {
+        // Fetch all transactions for the date range
+        const response = await fetch('/api/transactions?limit=10000', {
             credentials: 'include'
         });
         const allTransactions = await response.json();
