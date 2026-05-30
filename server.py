@@ -75,7 +75,9 @@ def get_db_connection():
                 user=MYSQL_CONFIG['user'],
                 password=MYSQL_CONFIG['password'],
                 database=MYSQL_CONFIG['database'],
-                port=MYSQL_CONFIG['port']
+                port=MYSQL_CONFIG['port'],
+                charset='utf8mb4',
+                collation='utf8mb4_unicode_ci'
             )
             return conn
         except Error as e:
@@ -99,9 +101,21 @@ def execute_query(query, params=None, fetch=False, fetchone=False):
         
         if fetch:
             if USE_MYSQL:
+                from datetime import date as date_type
+                from decimal import Decimal as Dec
                 columns = [desc[0] for desc in cursor.description]
                 rows = cursor.fetchall()
-                result = [dict(zip(columns, row)) for row in rows]
+                result = []
+                for row in rows:
+                    d = dict(zip(columns, row))
+                    for k, v in d.items():
+                        if isinstance(v, datetime):
+                            d[k] = v.strftime('%Y-%m-%d %H:%M:%S')
+                        elif isinstance(v, date_type):
+                            d[k] = v.strftime('%Y-%m-%d')
+                        elif isinstance(v, Dec):
+                            d[k] = float(v)
+                    result.append(d)
             else:
                 rows = cursor.fetchall()
                 result = [dict(row) for row in rows]
@@ -130,7 +144,7 @@ def init_db():
                 port=MYSQL_CONFIG['port']
             )
             cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MYSQL_CONFIG['database']}")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{MYSQL_CONFIG['database']}`")
             cursor.close()
             conn.close()
         except Error as e:
