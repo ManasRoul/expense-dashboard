@@ -1,54 +1,50 @@
 ======================================================================
-🔍 DATABASE DIAGNOSTIC CHECK
+🔧 DATA MISMATCH REPAIR SCRIPT
 ======================================================================
 
-1️⃣  CONFIGURATION CHECK
+📋 Checking latest transaction...
+
+Transaction ID: 31
+Date: 2026-09-12
+Total Income: 0.00
+Total Expense: 450.00
+
+🔍 Checking 18 expense columns:
 ----------------------------------------------------------------------
-USE_MYSQL: True
-Database Host: localhost
-Database Name: sagaufqr_finance-db2
-Database User: sagaufqr_finance-us2
-Database Port: 3306
 
-2️⃣  MYSQL CONNECTION CHECK
+⚠️  Empty columns (18):
+   • Brokerage                      (brokerage           ): ₹0.00
+   • Salary                         (salary              ): ₹0.00
+   • Room Cleaning Charge           (roomCleaningCharge  ): ₹0.00
+   • Generator & Maintenance        (generatorMaintenance): ₹0.00
+   • Hotel Stationary               (hotelStationary     ): ₹0.00
+   • Hotel Cleaning and Sanitation  (hotelCleaningSanitation): ₹0.00
+   • Rent & Taxes                   (rentTaxes           ): ₹0.00
+   • TV Recharge                    (tvRecharge          ): ₹0.00
+   • Camera/WiFi                    (cameraWifi          ): ₹0.00
+   • Plumbing & Maintenance         (plumbingMaintenance ): ₹0.00
+   • Electricity & Maintenance      (electricityMaintenance): ₹0.00
+   • Electricity Bill               (electricityBill     ): ₹0.00
+   • Staff Fooding                  (staffFooding        ): ₹0.00
+   • Laundry                        (laundry             ): ₹0.00
+   • Owner Kitchen & Cab Payment    (ownerKitchenCab     ): ₹0.00
+   • Office Stationary              (officeStationary    ): ₹0.00
+   • Misc Expenses                  (miscExpenses        ): ₹0.00
+   • Carpenter                      (carpenter           ): ₹0.00
+
+💹 Summary:
+   Total Expense in DB: ₹450.00
+   Total found in columns: ₹0
+   Missing: ₹450.0
+
+❌ ISSUE: Data exists but not in expense columns!
+   The ₹450.0 is missing from category columns
+
+🔎 Scanning ALL columns for non-zero values:
 ----------------------------------------------------------------------
-✅ MySQL connection successful!
+   ❌ NO category data found anywhere in transaction!
 
-3️⃣  SETTINGS TABLE CHECK
-----------------------------------------------------------------------
-✅ Total categories in settings: 32
-   • employee: 7
-   • expense_category: 18
-   • income_category: 7
-
-4️⃣  TRANSACTIONS TABLE STRUCTURE
-----------------------------------------------------------------------
-✅ Total columns in transactions table: 159
-
-5️⃣  SAMPLE TRANSACTION DATA
-----------------------------------------------------------------------
-✅ Total transactions in database: 11
-
-📊 Latest transaction (ID 31):
-   Date: 2026-09-12
-   Total Income: 0.00
-   Total Expense: 450.00
-   Closing Balance: 46990.00
-
-   Income entries:
-
-   Expense entries:
-
-6️⃣  CHECKING FOR MISSING COLUMNS
-----------------------------------------------------------------------
-✅ All expected columns exist!
-
-7️⃣  CHECKING WHICH COLUMNS HAVE DATA
-----------------------------------------------------------------------
-Columns with non-zero values in latest transaction:
-   • id: 31
-      ❌ NOT found in settings table!
-
-======================================================================
-End of diagnostic check
-======================================================================
+💡 This means:
+   1. Data was calculated but not inserted into columns
+   2. Likely reason: server.py using old hardcoded categories
+   3. Solution: Update server.py to use dynamic categories from settings table
