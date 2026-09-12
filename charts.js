@@ -1,11 +1,34 @@
 let allTransactions = [];
 let charts = {};
 
-const INCOME_KEYS = ['room_rent','mattress_charge','travel_cab','kitchen_facility','clean_charge','misc_receipt'];
-const EXPENSE_KEYS = ['brokerage','salary','room_cleaning_charge','generator_maintenance','hotel_stationary','hotel_cleaning_sanitation','rent_taxes','tv_recharge','camera_wifi','plumbing_maintenance','electricity_maintenance','electricity_bill','staff_fooding','laundry','owner_kitchen_cab','office_stationary','misc_expenses'];
+let INCOME_KEYS = [];
+let EXPENSE_KEYS = [];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Load categories dynamically from settings
+async function loadCategoryKeys() {
+    try {
+        const res = await fetch('/api/settings', { credentials: 'include' });
+        const categories = await res.json();
+        
+        INCOME_KEYS = categories
+            .filter(cat => cat.type === 'income_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => cat.key_id);
+        
+        EXPENSE_KEYS = categories
+            .filter(cat => cat.type === 'expense_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => cat.key_id);
+    } catch (err) {
+        console.error('Error loading categories:', err);
+        // Fallback to hardcoded lists if API fails
+        INCOME_KEYS = ['room_rent','mattress_charge','travel_cab','kitchen_facility','clean_charge','misc_receipt'];
+        EXPENSE_KEYS = ['brokerage','salary','room_cleaning_charge','generator_maintenance','hotel_stationary','hotel_cleaning_sanitation','rent_taxes','tv_recharge','camera_wifi','plumbing_maintenance','electricity_maintenance','electricity_bill','staff_fooding','laundry','owner_kitchen_cab','office_stationary','misc_expenses'];
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
+    await loadCategoryKeys();
+    
     const res = await fetch('/api/transactions', { credentials: 'include' });
     allTransactions = await res.json();
     allTransactions.sort((a, b) => a.date.localeCompare(b.date));

@@ -48,6 +48,15 @@ CORS(app,
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
      allow_headers=['Content-Type'])
 
+# Add no-cache headers for development
+@app.after_request
+def add_no_cache_headers(response):
+    if response.content_type and 'javascript' in response.content_type:
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 # Rate limiting
 if LIMITER_AVAILABLE:
     limiter = Limiter(
@@ -130,6 +139,62 @@ def execute_query(query, params=None, fetch=False, fetchone=False):
     finally:
         cursor.close()
         conn.close()
+
+def add_category_columns(key_id):
+    """Add columns to transactions table for a new category"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Column names
+        col_value = key_id
+        col_method = f"{key_id}_method"
+        col_comment = f"{key_id}_comment"
+        
+        if USE_MYSQL:
+            # Check if columns exist
+            check_query = f"SHOW COLUMNS FROM transactions LIKE %s"
+            cursor.execute(check_query, (col_value,))
+            if not cursor.fetchone():
+                # Add the value column
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_value} DECIMAL(10, 2) DEFAULT 0"
+                cursor.execute(alter_query)
+            
+            cursor.execute(check_query, (col_method,))
+            if not cursor.fetchone():
+                # Add the method column
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_method} VARCHAR(10)"
+                cursor.execute(alter_query)
+            
+            cursor.execute(check_query, (col_comment,))
+            if not cursor.fetchone():
+                # Add the comment column
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_comment} TEXT DEFAULT ''"
+                cursor.execute(alter_query)
+        else:
+            # SQLite - check if column exists by trying to select it
+            cursor.execute(f"PRAGMA table_info(transactions)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if col_value not in columns:
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_value} REAL DEFAULT 0"
+                cursor.execute(alter_query)
+            
+            if col_method not in columns:
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_method} TEXT"
+                cursor.execute(alter_query)
+            
+            if col_comment not in columns:
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_comment} TEXT DEFAULT ''"
+                cursor.execute(alter_query)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print(f"✓ Added columns for category: {key_id}")
+    except Exception as e:
+        print(f"Error adding category columns: {e}")
+        # Don't raise - let it continue even if columns already exist
 
 # Database setup
 def init_db():
@@ -376,6 +441,7 @@ def init_db():
             type VARCHAR(50) NOT NULL,
             key_id VARCHAR(100) NOT NULL,
             label VARCHAR(200) NOT NULL,
+            icon VARCHAR(10) DEFAULT '',
             sort_order INT DEFAULT 0,
             active TINYINT DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -387,6 +453,7 @@ def init_db():
             type TEXT NOT NULL,
             key_id TEXT NOT NULL,
             label TEXT NOT NULL,
+            icon TEXT DEFAULT '',
             sort_order INTEGER DEFAULT 0,
             active INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -400,37 +467,37 @@ def init_db():
     if existing_settings and existing_settings['cnt'] == 0:
         placeholder = '%s' if USE_MYSQL else '?'
         defaults = [
-            ('employee', 'shakti', 'Shakti', 1),
-            ('employee', 'kabu', 'Kabu', 2),
-            ('employee', 'kiran', 'Kiran', 3),
-            ('employee', 'purna', 'Purna', 4),
-            ('income_category', 'roomRent', 'Room Rent', 1),
-            ('income_category', 'mattressCharge', 'Mattress Charge', 2),
-            ('income_category', 'travelCab', 'Travel/Cab Service', 3),
-            ('income_category', 'kitchenFacility', 'Kitchen Facility', 4),
-            ('income_category', 'cleanCharge', 'Cleaning Charge', 5),
-            ('income_category', 'miscReceipt', 'Misc Receipt', 6),
-            ('expense_category', 'brokerage', 'Brokerage', 1),
-            ('expense_category', 'salary', 'Salary', 2),
-            ('expense_category', 'roomCleaningCharge', 'Room Cleaning Charge', 3),
-            ('expense_category', 'generatorMaintenance', 'Generator & Maintenance', 4),
-            ('expense_category', 'hotelStationary', 'Hotel Stationary', 5),
-            ('expense_category', 'hotelCleaningSanitation', 'Hotel Cleaning and Sanitation', 6),
-            ('expense_category', 'rentTaxes', 'Rent & Taxes', 7),
-            ('expense_category', 'tvRecharge', 'TV Recharge', 8),
-            ('expense_category', 'cameraWifi', 'Camera/WiFi', 9),
-            ('expense_category', 'plumbingMaintenance', 'Plumbing & Maintenance', 10),
-            ('expense_category', 'electricityMaintenance', 'Electricity & Maintenance', 11),
-            ('expense_category', 'electricityBill', 'Electricity Bill', 12),
-            ('expense_category', 'staffFooding', 'Staff Fooding', 13),
-            ('expense_category', 'laundry', 'Laundry', 14),
-            ('expense_category', 'ownerKitchenCab', 'Owner Kitchen & Cab Payment', 15),
-            ('expense_category', 'officeStationary', 'Office Stationary', 16),
-            ('expense_category', 'miscExpenses', 'Misc Expenses', 17),
+            ('employee', 'shakti', 'Shakti', '', 1),
+            ('employee', 'kabu', 'Kabu', '', 2),
+            ('employee', 'kiran', 'Kiran', '', 3),
+            ('employee', 'purna', 'Purna', '', 4),
+            ('income_category', 'room_rent', 'Room Rent', '🏠', 1),
+            ('income_category', 'mattress_charge', 'Mattress Charge', '🛏️', 2),
+            ('income_category', 'travel_cab', 'Travel/Cab Service', '🚕', 3),
+            ('income_category', 'kitchen_facility', 'Kitchen Facility', '🍳', 4),
+            ('income_category', 'clean_charge', 'Cleaning Charge', '🧹', 5),
+            ('income_category', 'misc_receipt', 'Misc Receipt', '💵', 6),
+            ('expense_category', 'brokerage', 'Brokerage', '🤝', 1),
+            ('expense_category', 'salary', 'Salary', '💼', 2),
+            ('expense_category', 'room_cleaning_charge', 'Room Cleaning Charge', '🧼', 3),
+            ('expense_category', 'generator_maintenance', 'Generator & Maintenance', '⚡', 4),
+            ('expense_category', 'hotel_stationary', 'Hotel Stationary', '📝', 5),
+            ('expense_category', 'hotel_cleaning_sanitation', 'Hotel Cleaning & Sanitation', '🧽', 6),
+            ('expense_category', 'rent_taxes', 'Rent & Taxes', '🏢', 7),
+            ('expense_category', 'tv_recharge', 'TV Recharge', '📺', 8),
+            ('expense_category', 'camera_wifi', 'Camera/WiFi', '📡', 9),
+            ('expense_category', 'plumbing_maintenance', 'Plumbing & Maintenance', '🔧', 10),
+            ('expense_category', 'electricity_maintenance', 'Electricity & Maintenance', '💡', 11),
+            ('expense_category', 'electricity_bill', 'Electricity Bill', '⚡', 12),
+            ('expense_category', 'staff_fooding', 'Staff Fooding', '🍽️', 13),
+            ('expense_category', 'laundry', 'Laundry', '👕', 14),
+            ('expense_category', 'owner_kitchen_cab', 'Owner Kitchen & Cab Payment', '🚗', 15),
+            ('expense_category', 'office_stationary', 'Office Stationary', '📋', 16),
+            ('expense_category', 'misc_expenses', 'Misc Expenses', '💳', 17),
         ]
         for item in defaults:
             execute_query(
-                f"INSERT INTO settings (type, key_id, label, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                f"INSERT INTO settings (type, key_id, label, icon, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
                 item
             )
         print("Default settings seeded (employees, income/expense categories)")
@@ -448,6 +515,14 @@ def init_db():
         insert_user_query = f"INSERT INTO users (username, password_hash, role) VALUES ({placeholder}, {placeholder}, {placeholder})"
         execute_query(insert_user_query, ('admin', default_password_hash, 'owner'))
         print("Default owner user created - Username: admin, Password: admin123, Role: owner")
+    
+    # Ensure all categories in settings table have corresponding columns in transactions table
+    all_categories = execute_query(
+        "SELECT DISTINCT key_id FROM settings WHERE type IN ('income_category', 'expense_category') AND active = 1",
+        fetch=True
+    )
+    for cat in all_categories:
+        add_category_columns(cat['key_id'])
     
     db_type = "MySQL" if USE_MYSQL else "SQLite"
     print(f"Database initialized successfully ({db_type})")
@@ -511,11 +586,30 @@ def validate_payment_method(method):
 def camel_to_snake(name):
     return re.sub(r'([A-Z])', r'_\1', name).lower()
 
-KNOWN_INCOME_KEYS = ['roomRent', 'mattressCharge', 'travelCab', 'kitchenFacility', 'cleanCharge', 'miscReceipt']
-KNOWN_EXPENSE_KEYS = ['brokerage', 'salary', 'roomCleaningCharge', 'generatorMaintenance',
-                     'hotelStationary', 'hotelCleaningSanitation', 'rentTaxes', 'tvRecharge',
-                     'cameraWifi', 'plumbingMaintenance', 'electricityMaintenance', 'electricityBill',
-                     'staffFooding', 'laundry', 'ownerKitchenCab', 'officeStationary', 'miscExpenses']
+# Will be populated on app startup
+KNOWN_INCOME_KEYS = []
+KNOWN_EXPENSE_KEYS = []
+
+def load_known_category_keys():
+    """Load active category keys from settings table at app startup"""
+    global KNOWN_INCOME_KEYS, KNOWN_EXPENSE_KEYS
+    try:
+        placeholder = '%s' if USE_MYSQL else '?'
+        categories = execute_query(
+            f"SELECT key_id, type FROM settings WHERE type IN ({placeholder}, {placeholder}) AND active = 1 ORDER BY sort_order",
+            ('income_category', 'expense_category'), fetch=True
+        )
+        
+        KNOWN_INCOME_KEYS = [cat['key_id'] for cat in categories if cat['type'] == 'income_category']
+        KNOWN_EXPENSE_KEYS = [cat['key_id'] for cat in categories if cat['type'] == 'expense_category']
+        
+        print(f"✓ Loaded income categories: {KNOWN_INCOME_KEYS}")
+        print(f"✓ Loaded expense categories: {KNOWN_EXPENSE_KEYS}")
+    except Exception as e:
+        print(f"WARNING: Could not load categories from settings: {e}")
+        print("Using empty category lists - form submission will not work until categories are added")
+        KNOWN_INCOME_KEYS = []
+        KNOWN_EXPENSE_KEYS = []
 
 def build_transaction_columns_values(data, entry_date):
     """Build columns and values for INSERT/UPDATE from transaction data."""
@@ -523,7 +617,15 @@ def build_transaction_columns_values(data, entry_date):
     columns = ['date', 'opening_balance']
     values_list = [entry_date, data['openingBalance']]
     
-    for key in KNOWN_INCOME_KEYS:
+    # Get all active income categories from settings (not just KNOWN_INCOME_KEYS)
+    income_categories = execute_query(
+        "SELECT key_id FROM settings WHERE type = 'income_category' AND active = 1 ORDER BY sort_order",
+        fetch=True
+    )
+    income_keys = [cat['key_id'] for cat in income_categories] if income_categories else KNOWN_INCOME_KEYS
+    
+    # Process income categories
+    for key in income_keys:
         cat_data = data.get('income', {}).get(key, {})
         if isinstance(cat_data, dict):
             snake = camel_to_snake(key)
@@ -533,7 +635,15 @@ def build_transaction_columns_values(data, entry_date):
     columns.append('total_income')
     values_list.append(data.get('income', {}).get('totalIncome', 0))
     
-    for key in KNOWN_EXPENSE_KEYS:
+    # Get all active expense categories from settings (not just KNOWN_EXPENSE_KEYS)
+    expense_categories = execute_query(
+        "SELECT key_id FROM settings WHERE type = 'expense_category' AND active = 1 ORDER BY sort_order",
+        fetch=True
+    )
+    expense_keys = [cat['key_id'] for cat in expense_categories] if expense_categories else KNOWN_EXPENSE_KEYS
+    
+    # Process expense categories
+    for key in expense_keys:
         cat_data = data.get('expense', {}).get(key, {})
         if isinstance(cat_data, dict):
             snake = camel_to_snake(key)
@@ -825,13 +935,25 @@ def get_balances():
         if 'user_id' not in session:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        income_fields = ['room_rent', 'mattress_charge', 'travel_cab', 'kitchen_facility', 'clean_charge', 'misc_receipt']
-        expense_fields = ['brokerage', 'salary', 'room_cleaning_charge', 'generator_maintenance', 'hotel_stationary', 'hotel_cleaning_sanitation', 'rent_taxes', 'tv_recharge', 'camera_wifi', 'plumbing_maintenance', 'electricity_maintenance', 'electricity_bill', 'staff_fooding', 'laundry', 'owner_kitchen_cab', 'office_stationary', 'misc_expenses']
+        # Get all active income and expense categories dynamically
+        income_categories = execute_query(
+            "SELECT key_id FROM settings WHERE type = 'income_category' AND active = 1 ORDER BY sort_order",
+            fetch=True
+        )
+        expense_categories = execute_query(
+            "SELECT key_id FROM settings WHERE type = 'expense_category' AND active = 1 ORDER BY sort_order",
+            fetch=True
+        )
+        
+        income_fields = [cat['key_id'] for cat in (income_categories or [])]
+        expense_fields = [cat['key_id'] for cat in (expense_categories or [])]
         
         # Build SQL with CASE WHEN for cash/upi aggregation
+        # Treat empty/NULL payment methods as 'cash' for backward compatibility
+        # Use NULLIF to convert empty strings to NULL, then COALESCE to default to 'cash'
         parts = []
         for f in income_fields + expense_fields:
-            parts.append(f"SUM(CASE WHEN {f}_method='cash' THEN {f} ELSE 0 END) as {f}_cash")
+            parts.append(f"SUM(CASE WHEN COALESCE(NULLIF({f}_method, ''), 'cash')='cash' THEN {f} ELSE 0 END) as {f}_cash")
             parts.append(f"SUM(CASE WHEN {f}_method='upi' THEN {f} ELSE 0 END) as {f}_upi")
         parts.append("COUNT(*) as cnt")
         
@@ -861,7 +983,7 @@ def get_balances():
             'upiExpense': f"{upi_expense:.2f}",
             'upiBalance': f"{upi_balance:.2f}",
             'totalBalance': f"{total_balance:.2f}",
-            'transactionCount': result.get('cnt', 0)
+            'transactionCount': result.get('cnt', 0) if result else 0
         }), 200
     except Exception as e:
         print(f"Error calculating balances: {e}")
@@ -873,20 +995,57 @@ def get_category_totals():
         if 'user_id' not in session:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        income_fields = ['room_rent', 'mattress_charge', 'travel_cab', 'kitchen_facility', 'clean_charge', 'misc_receipt']
-        expense_fields = ['brokerage', 'salary', 'room_cleaning_charge', 'generator_maintenance', 'hotel_stationary', 'hotel_cleaning_sanitation', 'rent_taxes', 'tv_recharge', 'camera_wifi', 'plumbing_maintenance', 'electricity_maintenance', 'electricity_bill', 'staff_fooding', 'laundry', 'owner_kitchen_cab', 'office_stationary', 'misc_expenses']
+        placeholder = '%s' if USE_MYSQL else '?'
         
-        all_fields = income_fields + expense_fields
-        sums = ', '.join(f"COALESCE(SUM({f}), 0) as {f}" for f in all_fields)
-        query = f"SELECT {sums} FROM transactions"
-        result = execute_query(query, fetch=True, fetchone=True)
+        # Get all active categories from settings
+        categories = execute_query(
+            f"SELECT * FROM settings WHERE type IN ({placeholder}, {placeholder}) AND active = 1 ORDER BY type, sort_order",
+            ('income_category', 'expense_category'), fetch=True
+        )
         
-        income_totals = {f: float(result.get(f, 0) or 0) for f in income_fields}
-        expense_totals = {f: float(result.get(f, 0) or 0) for f in expense_fields}
+        # Get the list of actual columns in transactions table (for safety check)
+        conn = get_db_connection()
+        if USE_MYSQL:
+            cursor = conn.cursor()
+            cursor.execute("DESCRIBE transactions")
+            columns = {row[0] for row in cursor.fetchall()}
+        else:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(transactions)")
+            columns = {row[1] for row in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+        
+        income_totals = {}
+        expense_totals = {}
+        
+        # Build dynamic SUM query only for categories with corresponding columns
+        sum_parts = []
+        category_keys = []
+        
+        for cat in categories:
+            col_name = cat['key_id']
+            if col_name in columns:
+                sum_parts.append(f"COALESCE(SUM({col_name}), 0) as {col_name}")
+                category_keys.append((col_name, cat['type']))
+        
+        if sum_parts:
+            sums = ', '.join(sum_parts)
+            query = f"SELECT {sums} FROM transactions"
+            result = execute_query(query, fetch=True, fetchone=True)
+            
+            # Separate income and expense totals
+            for col_name, cat_type in category_keys:
+                total = float(result.get(col_name, 0) or 0)
+                if cat_type == 'income_category':
+                    income_totals[col_name] = total
+                else:
+                    expense_totals[col_name] = total
         
         return jsonify({
             'income': income_totals,
-            'expense': expense_totals
+            'expense': expense_totals,
+            'categories': categories  # Return full category metadata including icons and labels
         }), 200
     except Exception as e:
         print(f"Error calculating category totals: {e}")
@@ -1090,6 +1249,9 @@ def add_setting():
                 f"UPDATE settings SET active = 1, label = {placeholder} WHERE id = {placeholder}",
                 (label, existing['id'])
             )
+            # Ensure columns exist in transactions table
+            if setting_type in ('income_category', 'expense_category'):
+                add_category_columns(key_id)
             return jsonify({'message': 'Setting reactivated successfully'}), 200
         
         # Get next sort_order
@@ -1103,6 +1265,10 @@ def add_setting():
             f"INSERT INTO settings (type, key_id, label, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
             (setting_type, key_id, label, next_order)
         )
+        
+        # Add columns to transactions table for income/expense categories
+        if setting_type in ('income_category', 'expense_category'):
+            add_category_columns(key_id)
         
         return jsonify({'message': 'Setting added successfully'}), 200
     except Exception as e:
@@ -1170,6 +1336,9 @@ try:
         print(f"[server.py] DB_NAME = {MYSQL_CONFIG['database']}")
     init_db()
     print("[server.py] Database initialized successfully")
+    
+    # Load categories from settings table
+    load_known_category_keys()
 except Exception as e:
     print(f"[server.py] ERROR: Failed to initialize database: {e}")
     import traceback

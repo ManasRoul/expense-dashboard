@@ -1,8 +1,25 @@
+// Global category metadata
+let categoryMetadata = [];
+
 // Load dashboard data on page load
 document.addEventListener('DOMContentLoaded', () => {
-    loadDashboardData();
-    loadRecentTransactions();
+    loadCategoryMetadata().then(() => {
+        loadDashboardData();
+        loadRecentTransactions();
+    });
 });
+
+// Load category metadata from settings
+async function loadCategoryMetadata() {
+    try {
+        const res = await fetch('/api/settings', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load settings');
+        categoryMetadata = await res.json();
+    } catch (error) {
+        console.error('Error loading category metadata:', error);
+        categoryMetadata = [];
+    }
+}
 
 // Load dashboard balances
 async function loadDashboardData() {
@@ -93,24 +110,122 @@ async function loadRecentTransactions(fromDate = null, toDate = null) {
             return;
         }
 
-        tbody.innerHTML = filteredTransactions.map(transaction => `
-            <tr>
-                <td>${new Date(transaction.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-                <td>₹${parseFloat(transaction.opening_balance).toFixed(2)}</td>
-                <td class="positive">₹${parseFloat(transaction.total_income).toFixed(2)}</td>
-                <td class="negative">₹${parseFloat(transaction.total_expense).toFixed(2)}</td>
-                <td>₹${parseFloat(transaction.closing_balance).toFixed(2)}</td>
-                <td>
-                    <button class="btn-view" onclick="viewTransaction(${transaction.id})">View Details</button>
-                    ${isOwner ? `<button class="btn-delete" onclick="deleteTransaction(${transaction.id})">🗑️ Delete</button>` : ''}
-                </td>
-            </tr>
-        `).join('');
+        // Group transactions by date
+        const transactionsByDate = {};
+        filteredTransactions.forEach(transaction => {
+            const dateStr = transaction.date.split('T')[0].split(' ')[0]; // YYYY-MM-DD format
+            if (!transactionsByDate[dateStr]) {
+                transactionsByDate[dateStr] = [];
+            }
+            transactionsByDate[dateStr].push(transaction);
+        });
+
+        // Sort dates in descending order (newest first)
+        const sortedDates = Object.keys(transactionsByDate).sort().reverse();
+
+        // Build table rows - one row per date with aggregated totals
+        tbody.innerHTML = sortedDates.map(dateStr => {
+            let dateTransactions = transactionsByDate[dateStr];
+            
+            // Sort transactions by ID (ascending) to ensure last entry is the most recent
+            dateTransactions.sort((a, b) => a.id - b.id);
+            
+            // Calculate aggregated totals for this date
+            let openingBalance = dateTransactions[0].opening_balance; // First entry's opening balance
+            let closingBalance = dateTransactions[dateTransactions.length - 1].closing_balance; // Last entry's closing balance
+            let totalIncome = 0;
+            let totalExpense = 0;
+            let totalTransactionsOnDate = dateTransactions.length;
+            
+            dateTransactions.forEach(t => {
+                totalIncome += parseFloat(t.total_income) || 0;
+                totalExpense += parseFloat(t.total_expense) || 0;
+            });
+            
+            const deleteButton = isOwner ? `<button class="btn-delete" onclick="deleteAllTransactionsForDate('${dateStr}')" title="Delete all entries from ${dateStr}">🗑️</button>` : '';
+            
+            return `
+                <tr>
+                    <td>
+                        <strong>${new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>
+                        <br><small style="color: #666;">${totalTransactionsOnDate} ${totalTransactionsOnDate === 1 ? 'entry' : 'entries'}</small>
+                    </td>
+                    <td>₹${parseFloat(openingBalance).toFixed(2)}</td>
+                    <td class="positive">₹${totalIncome.toFixed(2)}</td>
+                    <td class="negative">₹${totalExpense.toFixed(2)}</td>
+                    <td>₹${parseFloat(closingBalance).toFixed(2)}</td>
+                    <td>
+                        <button class="btn-view" onclick="viewDateTransactions('${dateStr}')">View ${totalTransactionsOnDate > 1 ? 'All' : 'Details'}</button>
+                        ${deleteButton}
+                    </td>
+                </tr>
+            `;
+        }).join('');
     } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('transactionsBody').innerHTML = 
             '<tr><td colspan="6" class="loading-message">Error loading transactions</td></tr>';
     }
+}
+
+// View all transactions for a specific date
+function viewDateTransactions(dateStr) {
+    let dateTransactions = window.allTransactions.filter(t => {
+        const tDateStr = t.date.split('T')[0].split(' ')[0];
+        return tDateStr === dateStr;
+    });
+    
+    // Sort by ID to ensure correct order
+    dateTransactions.sort((a, b) => a.id - b.id);
+    
+    if (dateTransactions.length === 1) {
+        // Single entry - show details directly
+        viewTransaction(dateTransactions[0].id);
+    } else {
+        // Multiple entries - show list
+        const dateObj = new Date(dateStr + 'T00:00:00');
+        const dateFormatted = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        
+        let entriesList = '<div style="margin: 20px;">';
+        entriesList += `<h3>Transactions on ${dateFormatted}</h3>`;
+        entriesList += '<div style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">';
+        
+        dateTransactions.forEach((t, index) => {
+            entriesList += `
+                <div style="padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>Entry ${index + 1}</strong><br>
+                        Income: ₹${parseFloat(t.total_income).toFixed(2)} | 
+                        Expense: ₹${parseFloat(t.total_expense).toFixed(2)}
+                    </div>
+                    <button class="btn-view" onclick="viewTransaction(${t.id}); closeMultiTransactionModal();" style="margin-left: 10px;">View</button>
+                </div>
+            `;
+        });
+        
+        entriesList += '</div></div>';
+        
+        const modal = document.createElement('div');
+        modal.id = 'multiTransactionModal';
+        modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;';
+        modal.innerHTML = `
+            <div style="background: white; padding: 20px; border-radius: 12px; max-width: 600px; max-height: 80vh; overflow-y: auto;">
+                <button onclick="closeMultiTransactionModal()" style="float: right; font-size: 24px; border: none; background: none; cursor: pointer; padding: 0;">&times;</button>
+                ${entriesList}
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeMultiTransactionModal();
+        });
+    }
+}
+
+// Close multi-transaction modal
+function closeMultiTransactionModal() {
+    const modal = document.getElementById('multiTransactionModal');
+    if (modal) modal.remove();
 }
 
 // Refresh dashboard
@@ -149,34 +264,74 @@ function viewTransaction(id) {
         return;
     }
 
-    const incomeItems = [
-        { label: 'Room Rent', amount: 'room_rent', method: 'room_rent_method', comment: 'room_rent_comment' },
-        { label: 'Mattress Charge', amount: 'mattress_charge', method: 'mattress_charge_method', comment: 'mattress_charge_comment' },
-        { label: 'Travel/Cab Service', amount: 'travel_cab', method: 'travel_cab_method', comment: 'travel_cab_comment' },
-        { label: 'Kitchen Facility', amount: 'kitchen_facility', method: 'kitchen_facility_method', comment: 'kitchen_facility_comment' },
-        { label: 'Clean Charge', amount: 'clean_charge', method: 'clean_charge_method', comment: 'clean_charge_comment' },
-        { label: 'Misc Receipt', amount: 'misc_receipt', method: 'misc_receipt_method', comment: 'misc_receipt_comment' }
-    ];
+    // Build income and expense items dynamically from categoryMetadata
+    let incomeItems = [];
+    let expenseItems = [];
+    
+    if (categoryMetadata && categoryMetadata.length > 0) {
+        // Use dynamic categories from metadata
+        incomeItems = categoryMetadata
+            .filter(cat => cat.type === 'income_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => ({
+                label: cat.label,
+                amount: cat.key_id,
+                method: `${cat.key_id}_method`,
+                comment: `${cat.key_id}_comment`
+            }));
 
-    const expenseItems = [
-        { label: 'Brokerage', amount: 'brokerage', method: 'brokerage_method', comment: 'brokerage_comment' },
-        { label: 'Salary', amount: 'salary', method: 'salary_method', comment: 'salary_comment' },
-        { label: 'Room Cleaning Charge', amount: 'room_cleaning_charge', method: 'room_cleaning_charge_method', comment: 'room_cleaning_charge_comment' },
-        { label: 'Generator & Maintenance', amount: 'generator_maintenance', method: 'generator_maintenance_method', comment: 'generator_maintenance_comment' },
-        { label: 'Hotel Stationary', amount: 'hotel_stationary', method: 'hotel_stationary_method', comment: 'hotel_stationary_comment' },
-        { label: 'Hotel Cleaning & Sanitation', amount: 'hotel_cleaning_sanitation', method: 'hotel_cleaning_sanitation_method', comment: 'hotel_cleaning_sanitation_comment' },
-        { label: 'Rent & Taxes', amount: 'rent_taxes', method: 'rent_taxes_method', comment: 'rent_taxes_comment' },
-        { label: 'TV Recharge', amount: 'tv_recharge', method: 'tv_recharge_method', comment: 'tv_recharge_comment' },
-        { label: 'Camera/WiFi', amount: 'camera_wifi', method: 'camera_wifi_method', comment: 'camera_wifi_comment' },
-        { label: 'Plumbing & Maintenance', amount: 'plumbing_maintenance', method: 'plumbing_maintenance_method', comment: 'plumbing_maintenance_comment' },
-        { label: 'Electricity & Maintenance', amount: 'electricity_maintenance', method: 'electricity_maintenance_method', comment: 'electricity_maintenance_comment' },
-        { label: 'Electricity Bill', amount: 'electricity_bill', method: 'electricity_bill_method', comment: 'electricity_bill_comment' },
-        { label: 'Staff Fooding', amount: 'staff_fooding', method: 'staff_fooding_method', comment: 'staff_fooding_comment' },
-        { label: 'Laundry', amount: 'laundry', method: 'laundry_method', comment: 'laundry_comment' },
-        { label: 'Owner Kitchen & Cab Payment', amount: 'owner_kitchen_cab', method: 'owner_kitchen_cab_method', comment: 'owner_kitchen_cab_comment' },
-        { label: 'Office Stationary', amount: 'office_stationary', method: 'office_stationary_method', comment: 'office_stationary_comment' },
-        { label: 'Misc Expenses', amount: 'misc_expenses', method: 'misc_expenses_method', comment: 'misc_expenses_comment' }
-    ];
+        expenseItems = categoryMetadata
+            .filter(cat => cat.type === 'expense_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => ({
+                label: cat.label,
+                amount: cat.key_id,
+                method: `${cat.key_id}_method`,
+                comment: `${cat.key_id}_comment`
+            }));
+    } else {
+        // Fallback to hardcoded if metadata isn't loaded
+        console.warn('Category metadata not loaded, using fallback');
+        incomeItems = [
+            { label: 'Room Rent', amount: 'room_rent', method: 'room_rent_method', comment: 'room_rent_comment' },
+            { label: 'Mattress Charge', amount: 'mattress_charge', method: 'mattress_charge_method', comment: 'mattress_charge_comment' },
+            { label: 'Travel/Cab Service', amount: 'travel_cab', method: 'travel_cab_method', comment: 'travel_cab_comment' },
+            { label: 'Kitchen Facility', amount: 'kitchen_facility', method: 'kitchen_facility_method', comment: 'kitchen_facility_comment' },
+            { label: 'Clean Charge', amount: 'clean_charge', method: 'clean_charge_method', comment: 'clean_charge_comment' },
+            { label: 'Misc Receipt', amount: 'misc_receipt', method: 'misc_receipt_method', comment: 'misc_receipt_comment' }
+        ];
+
+        expenseItems = [
+            { label: 'Brokerage', amount: 'brokerage', method: 'brokerage_method', comment: 'brokerage_comment' },
+            { label: 'Salary', amount: 'salary', method: 'salary_method', comment: 'salary_comment' },
+            { label: 'Room Cleaning Charge', amount: 'room_cleaning_charge', method: 'room_cleaning_charge_method', comment: 'room_cleaning_charge_comment' },
+            { label: 'Generator & Maintenance', amount: 'generator_maintenance', method: 'generator_maintenance_method', comment: 'generator_maintenance_comment' },
+            { label: 'Hotel Stationary', amount: 'hotel_stationary', method: 'hotel_stationary_method', comment: 'hotel_stationary_comment' },
+            { label: 'Hotel Cleaning & Sanitation', amount: 'hotel_cleaning_sanitation', method: 'hotel_cleaning_sanitation_method', comment: 'hotel_cleaning_sanitation_comment' },
+            { label: 'Rent & Taxes', amount: 'rent_taxes', method: 'rent_taxes_method', comment: 'rent_taxes_comment' },
+            { label: 'TV Recharge', amount: 'tv_recharge', method: 'tv_recharge_method', comment: 'tv_recharge_comment' },
+            { label: 'Camera/WiFi', amount: 'camera_wifi', method: 'camera_wifi_method', comment: 'camera_wifi_comment' },
+            { label: 'Plumbing & Maintenance', amount: 'plumbing_maintenance', method: 'plumbing_maintenance_method', comment: 'plumbing_maintenance_comment' },
+            { label: 'Electricity & Maintenance', amount: 'electricity_maintenance', method: 'electricity_maintenance_method', comment: 'electricity_maintenance_comment' },
+            { label: 'Electricity Bill', amount: 'electricity_bill', method: 'electricity_bill_method', comment: 'electricity_bill_comment' },
+            { label: 'Staff Fooding', amount: 'staff_fooding', method: 'staff_fooding_method', comment: 'staff_fooding_comment' },
+            { label: 'Laundry', amount: 'laundry', method: 'laundry_method', comment: 'laundry_comment' },
+            { label: 'Owner Kitchen & Cab Payment', amount: 'owner_kitchen_cab', method: 'owner_kitchen_cab_method', comment: 'owner_kitchen_cab_comment' },
+            { label: 'Office Stationary', amount: 'office_stationary', method: 'office_stationary_method', comment: 'office_stationary_comment' },
+            { label: 'Misc Expenses', amount: 'misc_expenses', method: 'misc_expenses_method', comment: 'misc_expenses_comment' },
+            { label: 'Carpenter', amount: 'carpenter', method: 'carpenter_method', comment: 'carpenter_comment' }
+        ];
+    }
+    
+    console.log('categoryMetadata:', categoryMetadata);
+    console.log('incomeItems count:', incomeItems.length);
+    console.log('expenseItems count:', expenseItems.length);
+    console.log('transaction:', transaction);
+    
+    // Log first few expense items for debugging
+    console.log('First expense items:', expenseItems.slice(0, 3).map(item => ({
+        label: item.label,
+        transactionValue: transaction[item.amount],
+        parsed: parseFloat(transaction[item.amount])
+    })));
 
     let incomeHTML = '<table class="detail-table"><thead><tr><th>Income Source</th><th>Payment Method</th><th>Amount</th><th>Comment</th></tr></thead><tbody>';
     incomeItems.forEach(item => {
@@ -249,6 +404,7 @@ function viewTransaction(id) {
         
         <div class="modal-actions" style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
             <button class="btn btn-primary" onclick="editTransaction(${id})">✏️ Edit Transaction</button>
+            <button class="btn btn-danger" onclick="deleteTransaction(${id})" style="background: #ef4444; border-color: #dc2626;">🗑️ Delete Entry</button>
             <button class="btn btn-secondary" onclick="closeModal()">Close</button>
         </div>
     `;
@@ -286,12 +442,41 @@ async function deleteTransaction(id) {
             // Reload dashboard data to reflect changes
             await loadDashboardData();
             await loadRecentTransactions();
+            closeModal();
         } else {
             alert(data.error || 'Failed to delete transaction');
         }
     } catch (error) {
         console.error('Error deleting transaction:', error);
         alert('Error deleting transaction. Please try again.');
+    }
+}
+
+// Delete all transactions for a specific date
+async function deleteAllTransactionsForDate(dateStr) {
+    const transactionsToDelete = window.allTransactions.filter(t => t.date.split('T')[0] === dateStr);
+    const count = transactionsToDelete.length;
+    
+    if (!confirm(`Are you sure you want to delete all ${count} transaction(s) from ${dateStr}? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        for (const transaction of transactionsToDelete) {
+            const response = await fetch(`/api/transactions/${transaction.id}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                throw new Error(`Failed to delete transaction ${transaction.id}`);
+            }
+        }
+        alert(`${count} transaction(s) deleted successfully!`);
+        await loadDashboardData();
+        await loadRecentTransactions();
+    } catch (error) {
+        console.error('Error deleting transactions:', error);
+        alert('Error deleting transactions. Please try again.');
     }
 }
 
@@ -358,6 +543,28 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+// Load report categories dynamically from settings
+async function loadReportCategories() {
+    try {
+        const res = await fetch('/api/settings', { credentials: 'include' });
+        const categories = await res.json();
+        
+        const incomeCategories = categories
+            .filter(cat => cat.type === 'income_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => ({ label: cat.label, field: cat.key_id, method: cat.key_id + '_method' }));
+        
+        const expenseCategories = categories
+            .filter(cat => cat.type === 'expense_category' && (cat.active === 1 || cat.active === true))
+            .map(cat => ({ label: cat.label, field: cat.key_id, method: cat.key_id + '_method' }));
+        
+        return { incomeCategories, expenseCategories };
+    } catch (err) {
+        console.error('Error loading report categories:', err);
+        // Fallback to empty arrays if API fails
+        return { incomeCategories: [], expenseCategories: [] };
+    }
+}
+
 // Generate and download report
 async function generateReport() {
     const fromDate = document.getElementById('fromDate').value;
@@ -375,6 +582,9 @@ async function generateReport() {
     }
     
     try {
+        // Load categories first
+        const { incomeCategories, expenseCategories } = await loadReportCategories();
+        
         // Fetch all transactions for the date range
         const response = await fetch('/api/transactions?limit=10000', {
             credentials: 'include'
@@ -393,9 +603,9 @@ async function generateReport() {
         }
         
         if (format === 'excel') {
-            downloadExcel(filteredTransactions, fromDate, toDate);
+            downloadExcel(filteredTransactions, fromDate, toDate, incomeCategories, expenseCategories);
         } else {
-            downloadPDF(filteredTransactions, fromDate, toDate);
+            downloadPDF(filteredTransactions, fromDate, toDate, incomeCategories, expenseCategories);
         }
         
         closeDownloadModal();
@@ -406,16 +616,12 @@ async function generateReport() {
 }
 
 // Download as Excel
-function downloadExcel(transactions, fromDate, toDate) {
-    // Prepare data for Excel
-    const data = [];
+function downloadExcel(transactions, fromDate, toDate, incomeCategories, expenseCategories) {
+    // Create workbook with multiple sheets
+    const wb = XLSX.utils.book_new();
     
-    // Add header
-    data.push(['Financial Report - Detailed']);
-    data.push([`Date Range: ${fromDate} to ${toDate}`]);
-    data.push([]);
-    
-    // Add summary
+    // --- SUMMARY SHEET ---
+    const summaryData = [];
     let totalIncome = 0;
     let totalExpense = 0;
     
@@ -424,106 +630,121 @@ function downloadExcel(transactions, fromDate, toDate) {
         totalExpense += parseFloat(t.total_expense) || 0;
     });
     
-    const currentBalance = transactions.length > 0 ? parseFloat(transactions[0].closing_balance) : 0;
+    const currentBalance = transactions.length > 0 ? parseFloat(transactions[transactions.length - 1].closing_balance) : 0;
     
-    data.push(['Summary']);
-    data.push(['Total Income', totalIncome.toFixed(2)]);
-    data.push(['Total Expenses', totalExpense.toFixed(2)]);
-    data.push(['Current Balance', currentBalance.toFixed(2)]);
-    data.push([]);
+    summaryData.push(['Financial Report - Detailed']);
+    summaryData.push([`Date Range: ${fromDate} to ${toDate}`]);
+    summaryData.push([]);
+    summaryData.push(['Summary']);
+    summaryData.push(['Total Income', totalIncome.toFixed(2)]);
+    summaryData.push(['Total Expenses', totalExpense.toFixed(2)]);
+    summaryData.push(['Current Balance', currentBalance.toFixed(2)]);
     
-    // Income categories
-    const incomeCategories = [
-        { label: 'Room Rent', field: 'room_rent', method: 'room_rent_method' },
-        { label: 'Mattress Charge', field: 'mattress_charge', method: 'mattress_charge_method' },
-        { label: 'Travel/Cab Service', field: 'travel_cab', method: 'travel_cab_method' },
-        { label: 'Kitchen Facility', field: 'kitchen_facility', method: 'kitchen_facility_method' },
-        { label: 'Clean Charge', field: 'clean_charge', method: 'clean_charge_method' },
-        { label: 'Misc Receipt', field: 'misc_receipt', method: 'misc_receipt_method' }
-    ];
+    const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+    summaryWs['!cols'] = [{ wch: 25 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
     
-    // Expense categories
-    const expenseCategories = [
-        { label: 'Brokerage', field: 'brokerage', method: 'brokerage_method' },
-        { label: 'Salary', field: 'salary', method: 'salary_method' },
-        { label: 'Room Cleaning Charge', field: 'room_cleaning_charge', method: 'room_cleaning_charge_method' },
-        { label: 'Generator & Maintenance', field: 'generator_maintenance', method: 'generator_maintenance_method' },
-        { label: 'Hotel Stationary', field: 'hotel_stationary', method: 'hotel_stationary_method' },
-        { label: 'Hotel Cleaning & Sanitation', field: 'hotel_cleaning_sanitation', method: 'hotel_cleaning_sanitation_method' },
-        { label: 'Rent & Taxes', field: 'rent_taxes', method: 'rent_taxes_method' },
-        { label: 'TV Recharge', field: 'tv_recharge', method: 'tv_recharge_method' },
-        { label: 'Camera/WiFi', field: 'camera_wifi', method: 'camera_wifi_method' },
-        { label: 'Plumbing & Maintenance', field: 'plumbing_maintenance', method: 'plumbing_maintenance_method' },
-        { label: 'Electricity & Maintenance', field: 'electricity_maintenance', method: 'electricity_maintenance_method' },
-        { label: 'Electricity Bill', field: 'electricity_bill', method: 'electricity_bill_method' },
-        { label: 'Staff Fooding', field: 'staff_fooding', method: 'staff_fooding_method' },
-        { label: 'Laundry', field: 'laundry', method: 'laundry_method' },
-        { label: 'Owner Kitchen & Cab Payment', field: 'owner_kitchen_cab', method: 'owner_kitchen_cab_method' },
-        { label: 'Office Stationary', field: 'office_stationary', method: 'office_stationary_method' },
-        { label: 'Misc Expenses', field: 'misc_expenses', method: 'misc_expenses_method' }
-    ];
+    // --- DETAILED TRANSACTIONS SHEET ---
+    const detailData = [];
     
-    // Add detailed transactions
-    data.push(['DETAILED TRANSACTIONS']);
-    data.push([]);
+    // Column headers
+    detailData.push(['Date', 'Opening Balance', 'Income Category', 'Income Method', 'Income Amount', 'Expense Category', 'Expense Method', 'Expense Amount', 'Closing Balance']);
     
-    transactions.forEach((t, index) => {
-        data.push([`Transaction #${index + 1} - ${new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`]);
-        data.push(['Opening Balance', parseFloat(t.opening_balance).toFixed(2)]);
-        data.push([]);
+    transactions.forEach(t => {
+        const dateStr = new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const openingBal = parseFloat(t.opening_balance).toFixed(2);
+        const closingBal = parseFloat(t.closing_balance).toFixed(2);
         
-        // Income details
-        data.push(['INCOME']);
-        data.push(['Category', 'Payment Method', 'Amount']);
+        // Collect income and expense entries
+        const incomeEntries = [];
+        const expenseEntries = [];
+        
         incomeCategories.forEach(cat => {
             const amount = parseFloat(t[cat.field]) || 0;
             if (amount > 0) {
-                const method = t[cat.method] || '-';
-                data.push([cat.label, method.toUpperCase(), amount.toFixed(2)]);
+                const method = t[cat.method] || 'Cash';
+                incomeEntries.push({ category: cat.label, method: method.toUpperCase(), amount: amount.toFixed(2) });
             }
         });
-        data.push(['Total Income', '', parseFloat(t.total_income).toFixed(2)]);
-        data.push([]);
         
-        // Expense details
-        data.push(['EXPENSES']);
-        data.push(['Category', 'Payment Method', 'Amount']);
         expenseCategories.forEach(cat => {
             const amount = parseFloat(t[cat.field]) || 0;
             if (amount > 0) {
-                const method = t[cat.method] || '-';
-                data.push([cat.label, method.toUpperCase(), amount.toFixed(2)]);
+                const method = t[cat.method] || 'Cash';
+                expenseEntries.push({ category: cat.label, method: method.toUpperCase(), amount: amount.toFixed(2) });
             }
         });
-        data.push(['Total Expense', '', parseFloat(t.total_expense).toFixed(2)]);
-        data.push([]);
         
-        data.push(['Closing Balance', parseFloat(t.closing_balance).toFixed(2)]);
-        data.push([]);
-        data.push([]);
+        // Get max number of rows needed for this transaction
+        const maxRows = Math.max(incomeEntries.length, expenseEntries.length, 1);
+        
+        for (let i = 0; i < maxRows; i++) {
+            const row = [];
+            
+            // Date and balance info only on first row
+            if (i === 0) {
+                row.push(dateStr);
+                row.push(openingBal);
+            } else {
+                row.push('');
+                row.push('');
+            }
+            
+            // Income columns
+            if (i < incomeEntries.length) {
+                row.push(incomeEntries[i].category);
+                row.push(incomeEntries[i].method);
+                row.push(incomeEntries[i].amount);
+            } else {
+                row.push('');
+                row.push('');
+                row.push('');
+            }
+            
+            // Expense columns
+            if (i < expenseEntries.length) {
+                row.push(expenseEntries[i].category);
+                row.push(expenseEntries[i].method);
+                row.push(expenseEntries[i].amount);
+            } else {
+                row.push('');
+                row.push('');
+                row.push('');
+            }
+            
+            // Closing balance only on last row
+            if (i === maxRows - 1) {
+                row.push(closingBal);
+            } else {
+                row.push('');
+            }
+            
+            detailData.push(row);
+        }
     });
     
-    // Create workbook
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    
-    // Set column widths
-    ws['!cols'] = [
-        { wch: 35 }, // Category
-        { wch: 18 }, // Payment Method
-        { wch: 15 }  // Amount
+    const detailWs = XLSX.utils.aoa_to_sheet(detailData);
+    detailWs['!cols'] = [
+        { wch: 15 }, // Date
+        { wch: 16 }, // Opening Balance
+        { wch: 20 }, // Income Category
+        { wch: 15 }, // Income Method
+        { wch: 15 }, // Income Amount
+        { wch: 20 }, // Expense Category
+        { wch: 15 }, // Expense Method
+        { wch: 15 }, // Expense Amount
+        { wch: 16 }  // Closing Balance
     ];
-    
-    XLSX.utils.book_append_sheet(wb, ws, 'Detailed Report');
+    XLSX.utils.book_append_sheet(wb, detailWs, 'Detailed Report');
     
     // Download
     XLSX.writeFile(wb, `Financial_Report_Detailed_${fromDate}_to_${toDate}.xlsx`);
 }
 
 // Download as PDF
-function downloadPDF(transactions, fromDate, toDate) {
+function downloadPDF(transactions, fromDate, toDate, incomeCategories, expenseCategories) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF('l'); // landscape mode for wider table
     
     // Title
     doc.setFontSize(18);
@@ -542,7 +763,7 @@ function downloadPDF(transactions, fromDate, toDate) {
         totalExpense += parseFloat(t.total_expense) || 0;
     });
     
-    const currentBalance = transactions.length > 0 ? parseFloat(transactions[0].closing_balance) : 0;
+    const currentBalance = transactions.length > 0 ? parseFloat(transactions[transactions.length - 1].closing_balance) : 0;
     
     // Summary table
     doc.autoTable({
@@ -557,120 +778,102 @@ function downloadPDF(transactions, fromDate, toDate) {
         headStyles: { fillColor: [59, 130, 246] }
     });
     
-    // Income categories
-    const incomeCategories = [
-        { label: 'Room Rent', field: 'room_rent', method: 'room_rent_method' },
-        { label: 'Mattress Charge', field: 'mattress_charge', method: 'mattress_charge_method' },
-        { label: 'Travel/Cab', field: 'travel_cab', method: 'travel_cab_method' },
-        { label: 'Kitchen Facility', field: 'kitchen_facility', method: 'kitchen_facility_method' },
-        { label: 'Clean Charge', field: 'clean_charge', method: 'clean_charge_method' },
-        { label: 'Misc Receipt', field: 'misc_receipt', method: 'misc_receipt_method' }
-    ];
+    // Prepare detailed table data
+    const tableData = [];
     
-    // Expense categories
-    const expenseCategories = [
-        { label: 'Brokerage', field: 'brokerage', method: 'brokerage_method' },
-        { label: 'Salary', field: 'salary', method: 'salary_method' },
-        { label: 'Room Cleaning', field: 'room_cleaning_charge', method: 'room_cleaning_charge_method' },
-        { label: 'Generator', field: 'generator_maintenance', method: 'generator_maintenance_method' },
-        { label: 'Hotel Stationary', field: 'hotel_stationary', method: 'hotel_stationary_method' },
-        { label: 'Cleaning', field: 'hotel_cleaning_sanitation', method: 'hotel_cleaning_sanitation_method' },
-        { label: 'Rent & Taxes', field: 'rent_taxes', method: 'rent_taxes_method' },
-        { label: 'TV Recharge', field: 'tv_recharge', method: 'tv_recharge_method' },
-        { label: 'Camera/WiFi', field: 'camera_wifi', method: 'camera_wifi_method' },
-        { label: 'Plumbing', field: 'plumbing_maintenance', method: 'plumbing_maintenance_method' },
-        { label: 'Electricity Maint', field: 'electricity_maintenance', method: 'electricity_maintenance_method' },
-        { label: 'Electricity Bill', field: 'electricity_bill', method: 'electricity_bill_method' },
-        { label: 'Staff Fooding', field: 'staff_fooding', method: 'staff_fooding_method' },
-        { label: 'Laundry', field: 'laundry', method: 'laundry_method' },
-        { label: 'Owner Kitchen', field: 'owner_kitchen_cab', method: 'owner_kitchen_cab_method' },
-        { label: 'Office Stationary', field: 'office_stationary', method: 'office_stationary_method' },
-        { label: 'Misc Expenses', field: 'misc_expenses', method: 'misc_expenses_method' }
-    ];
-    
-    let currentY = doc.lastAutoTable.finalY + 15;
-    
-    // Detailed transaction breakdown
-    transactions.forEach((t, index) => {
-        // Check if we need a new page
-        if (currentY > 250) {
-            doc.addPage();
-            currentY = 20;
-        }
+    transactions.forEach(t => {
+        const dateStr = new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const openingBal = parseFloat(t.opening_balance).toFixed(2);
+        const closingBal = parseFloat(t.closing_balance).toFixed(2);
         
-        // Transaction header
-        doc.setFontSize(12);
-        doc.setFont(undefined, 'bold');
-        doc.text(`Transaction #${index + 1} - ${new Date(t.date).toLocaleDateString()}`, 14, currentY);
-        currentY += 7;
+        // Collect income and expense entries
+        const incomeEntries = [];
+        const expenseEntries = [];
         
-        doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
-        doc.text(`Opening Balance: Rs. ${parseFloat(t.opening_balance).toFixed(2)}`, 14, currentY);
-        currentY += 10;
-        
-        // Income table
-        const incomeData = [];
         incomeCategories.forEach(cat => {
             const amount = parseFloat(t[cat.field]) || 0;
             if (amount > 0) {
-                const method = t[cat.method] || '-';
-                incomeData.push([cat.label, method.toUpperCase(), amount.toFixed(2)]);
+                const method = t[cat.method] || 'Cash';
+                incomeEntries.push({ category: cat.label, method: method.toUpperCase(), amount: amount.toFixed(2) });
             }
         });
         
-        if (incomeData.length > 0) {
-            doc.autoTable({
-                startY: currentY,
-                head: [['Income Category', 'Method', 'Amount (Rs.)']],
-
-                body: incomeData,
-                theme: 'striped',
-                headStyles: { fillColor: [34, 197, 94] },
-                margin: { left: 14 },
-                tableWidth: 90
-            });
-            currentY = doc.lastAutoTable.finalY + 3;
-            
-            doc.setFont(undefined, 'bold');
-            doc.text(`Total Income: Rs. ${parseFloat(t.total_income).toFixed(2)}`, 14, currentY);
-            currentY += 10;
-            doc.setFont(undefined, 'normal');
-        }
-        
-        // Expense table
-        const expenseData = [];
         expenseCategories.forEach(cat => {
             const amount = parseFloat(t[cat.field]) || 0;
             if (amount > 0) {
-                const method = t[cat.method] || '-';
-                expenseData.push([cat.label, method.toUpperCase(), amount.toFixed(2)]);
+                const method = t[cat.method] || 'Cash';
+                expenseEntries.push({ category: cat.label, method: method.toUpperCase(), amount: amount.toFixed(2) });
             }
         });
         
-        if (expenseData.length > 0) {
-            doc.autoTable({
-                startY: currentY,
-                head: [['Expense Category', 'Method', 'Amount (Rs.)']],
-
-                body: expenseData,
-                theme: 'striped',
-                headStyles: { fillColor: [239, 68, 68] },
-                margin: { left: 14 },
-                tableWidth: 90
-            });
-            currentY = doc.lastAutoTable.finalY + 3;
-            
-            doc.setFont(undefined, 'bold');
-            doc.text(`Total Expense: Rs. ${parseFloat(t.total_expense).toFixed(2)}`, 14, currentY);
-            currentY += 7;
-        }
+        // Get max number of rows needed for this transaction
+        const maxRows = Math.max(incomeEntries.length, expenseEntries.length, 1);
         
-        // Closing balance
-        doc.setFont(undefined, 'bold');
-        doc.text(`Closing Balance: Rs. ${parseFloat(t.closing_balance).toFixed(2)}`, 14, currentY);
-        currentY += 15;
-        doc.setFont(undefined, 'normal');
+        for (let i = 0; i < maxRows; i++) {
+            const row = [];
+            
+            // Date and balance info only on first row
+            if (i === 0) {
+                row.push(dateStr);
+                row.push(openingBal);
+            } else {
+                row.push('');
+                row.push('');
+            }
+            
+            // Income columns
+            if (i < incomeEntries.length) {
+                row.push(incomeEntries[i].category);
+                row.push(incomeEntries[i].method);
+                row.push(incomeEntries[i].amount);
+            } else {
+                row.push('');
+                row.push('');
+                row.push('');
+            }
+            
+            // Expense columns
+            if (i < expenseEntries.length) {
+                row.push(expenseEntries[i].category);
+                row.push(expenseEntries[i].method);
+                row.push(expenseEntries[i].amount);
+            } else {
+                row.push('');
+                row.push('');
+                row.push('');
+            }
+            
+            // Closing balance only on last row
+            if (i === maxRows - 1) {
+                row.push(closingBal);
+            } else {
+                row.push('');
+            }
+            
+            tableData.push(row);
+        }
+    });
+    
+    // Add detailed transactions table
+    doc.autoTable({
+        startY: doc.lastAutoTable.finalY + 15,
+        head: [['Date', 'Opening Bal', 'Income Category', 'Income Method', 'Income Amt', 'Expense Category', 'Expense Method', 'Expense Amt', 'Closing Bal']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 8 },
+        columnStyles: {
+            0: { cellWidth: 18 }, // Date
+            1: { cellWidth: 16 }, // Opening Bal
+            2: { cellWidth: 20 }, // Income Category
+            3: { cellWidth: 16 }, // Income Method
+            4: { cellWidth: 14 }, // Income Amt
+            5: { cellWidth: 20 }, // Expense Category
+            6: { cellWidth: 16 }, // Expense Method
+            7: { cellWidth: 14 }, // Expense Amt
+            8: { cellWidth: 16 }  // Closing Bal
+        },
+        margin: { left: 8, right: 8 }
     });
     
     // Download
