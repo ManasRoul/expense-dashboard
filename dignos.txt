@@ -1,3 +1,11 @@
+grep -n "build_transaction_columns_values" server.py
+614:def build_transaction_columns_values(data, entry_date):
+774:        columns, values_list = build_transaction_columns_values(data, entry_date)
+895:            columns, values_list = build_transaction_columns_values(data, entry_date)
+
+
+
+
 ======================================================================
 🔧 DATA MISMATCH REPAIR SCRIPT
 ======================================================================
