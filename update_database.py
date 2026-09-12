@@ -8,6 +8,16 @@ import sys
 import os
 from datetime import datetime
 
+# Load .env file for secrets (if it exists)
+env_file = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_file):
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
+
 def run_command(name, command):
     """Run a Python script and report status"""
     print(f"\n{'='*60}")
