@@ -114,7 +114,7 @@ try:
         expected_categories = [row['key_id'] for row in cursor.fetchall()]
         
         cursor.execute("SHOW COLUMNS FROM transactions")
-        existing_columns = {row[0] for row in cursor.fetchall()}
+        existing_columns = {row['Field'] for row in cursor.fetchall()}
         
         missing_columns = []
         for cat in expected_categories:
@@ -130,6 +130,32 @@ try:
             print("\n🔧 Run sync_database.py to add missing columns")
         else:
             print("✅ All expected columns exist!")
+        
+        # Check 7: Deep dive - what columns actually have data?
+        print("\n7️⃣  CHECKING WHICH COLUMNS HAVE DATA")
+        print("-" * 70)
+        
+        if tx_count > 0:
+            cursor.execute("SELECT * FROM transactions ORDER BY id DESC LIMIT 1")
+            last_tx = cursor.fetchone()
+            
+            print("Columns with non-zero values in latest transaction:")
+            expense_cols_with_data = []
+            income_cols_with_data = []
+            
+            for col_name, value in last_tx.items():
+                if value and isinstance(value, (int, float)) and value != 0:
+                    if '_method' not in col_name and '_comment' not in col_name:
+                        if not col_name.startswith('total_') and not col_name.startswith('opening_') and not col_name.startswith('closing_'):
+                            print(f"   • {col_name}: {value}")
+                            
+                            # Check if this column is in settings
+                            cursor.execute("SELECT * FROM settings WHERE key_id=%s", (col_name,))
+                            setting = cursor.fetchone()
+                            if setting:
+                                print(f"      ✅ Found in settings as: {setting['label']} ({setting['type']})")
+                            else:
+                                print(f"      ❌ NOT found in settings table!")
         
         cursor.close()
         conn.close()
