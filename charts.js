@@ -40,7 +40,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 function populateFilters() {
     const monthsSet = new Set(), yearsSet = new Set();
     allTransactions.forEach(t => {
-        const [y, m] = t.date.split('-');
+        // Extract just the date part (YYYY-MM-DD) if time is included
+        const dateOnly = t.date.split(' ')[0];
+        const [y, m] = dateOnly.split('-');
         yearsSet.add(y);
         monthsSet.add(`${y}-${m}`);
     });
@@ -70,7 +72,11 @@ function switchTab(tab) {
 // --- MONTHLY TAB ---
 function renderMonthlyTab() {
     const month = document.getElementById('monthFilter').value;
-    const filtered = allTransactions.filter(t => t.date.startsWith(month));
+    const filtered = allTransactions.filter(t => {
+        // Extract just the date part (YYYY-MM-DD) if time is included
+        const dateOnly = t.date.split(' ')[0];
+        return dateOnly.startsWith(month);
+    });
 
     destroy('monthBalance', 'monthDaily', 'monthIncome', 'monthExpense');
 
@@ -96,7 +102,9 @@ function renderYearlyTab() {
     // Aggregate by year
     const yearlyData = {};
     allTransactions.forEach(t => {
-        const y = t.date.split('-')[0];
+        // Extract just the date part (YYYY-MM-DD) if time is included
+        const dateOnly = t.date.split(' ')[0];
+        const y = dateOnly.split('-')[0];
         if (!yearlyData[y]) yearlyData[y] = { income: 0, expense: 0, lastBalance: 0 };
         yearlyData[y].income += parseFloat(t.total_income) || 0;
         yearlyData[y].expense += parseFloat(t.total_expense) || 0;
@@ -165,5 +173,9 @@ function doughnutChart(canvasId, totals, colors) {
     });
 }
 
-function fmtDay(d) { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+function fmtDay(d) { 
+    // Handle dates with or without time component
+    const dateOnly = d.split(' ')[0]; // Extract just YYYY-MM-DD part
+    return new Date(dateOnly + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); 
+}
 function fmtLabel(k) { return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()); }
