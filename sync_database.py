@@ -9,11 +9,23 @@ This script:
 5. Preserves all existing data
 """
 
+import os
+import sys
+
+# Load .env file for secrets (if it exists)
+env_file = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_file):
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
+
 import sqlite3
 import mysql.connector
 from mysql.connector import Error
 from config import MYSQL_CONFIG, USE_MYSQL
-import sys
 
 def get_local_categories():
     """Read categories from local SQLite database"""
