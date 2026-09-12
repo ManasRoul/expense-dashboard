@@ -49,31 +49,40 @@ try:
     cursor = conn.cursor()
     
     with open(backup_file, 'w') as f:
-        f.write(f"-- Database Backup before reset\n")
-        f.write(f"-- Created: {datetime.now()}\n")
-        f.write(f"-- Database: {MYSQL_CONFIG['database']}\n\n")
+        f.write("-- Database Backup before reset\n")
+        f.write("-- Created: " + str(datetime.now()) + "\n")
+        f.write("-- Database: " + MYSQL_CONFIG['database'] + "\n\n")
         
         # Get all tables
-        cursor.execute(f"SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{MYSQL_CONFIG['database']}'")
+        cursor.execute("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = %s", (MYSQL_CONFIG['database'],))
         tables = cursor.fetchall()
         
         for (table_name,) in tables:
             # Get CREATE TABLE
-            cursor.execute(f"SHOW CREATE TABLE {table_name}")
+            cursor.execute("SHOW CREATE TABLE " + table_name)
             create_sql = cursor.fetchone()[1]
-            f.write(f"\n-- Table: {table_name}\n")
-            f.write(f"DROP TABLE IF EXISTS {table_name};\n")
-            f.write(f"{create_sql};\n\n")
+            f.write("\n-- Table: " + table_name + "\n")
+            f.write("DROP TABLE IF EXISTS " + table_name + ";\n")
+            f.write(create_sql + ";\n\n")
             
             # Get data
-            cursor.execute(f"SELECT * FROM {table_name}")
+            cursor.execute("SELECT * FROM " + table_name)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
             
             if rows:
                 for row in rows:
-                    values = ', '.join([f"'{str(val).replace(chr(39), chr(39)+chr(39))}'" if val is not None else 'NULL' for val in row])
-                    f.write(f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({values});\n")
+                    col_list = ', '.join(columns)
+                    val_list = []
+                    for val in row:
+                        if val is None:
+                            val_list.append('NULL')
+                        else:
+                            # Escape single quotes
+                            escaped = str(val).replace("'", "''")
+                            val_list.append("'" + escaped + "'")
+                    values = ', '.join(val_list)
+                    f.write("INSERT INTO " + table_name + " (" + col_list + ") VALUES (" + values + ");\n")
     
     print(f"✅ Backup created: {backup_file}")
     
