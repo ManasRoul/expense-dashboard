@@ -41,9 +41,14 @@ Database Port: 3306
 
 6️⃣  CHECKING FOR MISSING COLUMNS
 ----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/home/sagaufqr/finance.sagarbela.com/dignose.py", line 117, in <module>
-    existing_columns = {row[0] for row in cursor.fetchall()}
-  File "/home/sagaufqr/finance.sagarbela.com/dignose.py", line 117, in <setcomp>
-    existing_columns = {row[0] for row in cursor.fetchall()}
-KeyError: 0
+✅ All expected columns exist!
+
+7️⃣  CHECKING WHICH COLUMNS HAVE DATA
+----------------------------------------------------------------------
+Columns with non-zero values in latest transaction:
+   • id: 31
+      ❌ NOT found in settings table!
+
+======================================================================
+End of diagnostic check
+======================================================================
