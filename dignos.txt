@@ -1,0 +1,49 @@
+======================================================================
+🔍 DATABASE DIAGNOSTIC CHECK
+======================================================================
+
+1️⃣  CONFIGURATION CHECK
+----------------------------------------------------------------------
+USE_MYSQL: True
+Database Host: localhost
+Database Name: sagaufqr_finance-db2
+Database User: sagaufqr_finance-us2
+Database Port: 3306
+
+2️⃣  MYSQL CONNECTION CHECK
+----------------------------------------------------------------------
+✅ MySQL connection successful!
+
+3️⃣  SETTINGS TABLE CHECK
+----------------------------------------------------------------------
+✅ Total categories in settings: 32
+   • employee: 7
+   • expense_category: 18
+   • income_category: 7
+
+4️⃣  TRANSACTIONS TABLE STRUCTURE
+----------------------------------------------------------------------
+✅ Total columns in transactions table: 159
+
+5️⃣  SAMPLE TRANSACTION DATA
+----------------------------------------------------------------------
+✅ Total transactions in database: 11
+
+📊 Latest transaction (ID 31):
+   Date: 2026-09-12
+   Total Income: 0.00
+   Total Expense: 450.00
+   Closing Balance: 46990.00
+
+   Income entries:
+
+   Expense entries:
+
+6️⃣  CHECKING FOR MISSING COLUMNS
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/sagaufqr/finance.sagarbela.com/dignose.py", line 117, in <module>
+    existing_columns = {row[0] for row in cursor.fetchall()}
+  File "/home/sagaufqr/finance.sagarbela.com/dignose.py", line 117, in <setcomp>
+    existing_columns = {row[0] for row in cursor.fetchall()}
+KeyError: 0
