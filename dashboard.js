@@ -625,12 +625,15 @@ function downloadExcel(transactions, fromDate, toDate, incomeCategories, expense
     let totalIncome = 0;
     let totalExpense = 0;
     
-    transactions.forEach(t => {
+    // Sort transactions by ID to ensure correct order
+    const sortedTransactions = [...transactions].sort((a, b) => a.id - b.id);
+    
+    sortedTransactions.forEach(t => {
         totalIncome += parseFloat(t.total_income) || 0;
         totalExpense += parseFloat(t.total_expense) || 0;
     });
     
-    const currentBalance = transactions.length > 0 ? parseFloat(transactions[transactions.length - 1].closing_balance) : 0;
+    const currentBalance = sortedTransactions.length > 0 ? parseFloat(sortedTransactions[sortedTransactions.length - 1].closing_balance) : 0;
     
     summaryData.push(['Financial Report - Detailed']);
     summaryData.push([`Date Range: ${fromDate} to ${toDate}`]);
@@ -650,7 +653,7 @@ function downloadExcel(transactions, fromDate, toDate, incomeCategories, expense
     // Column headers
     detailData.push(['Date', 'Opening Balance', 'Income Category', 'Income Method', 'Income Amount', 'Expense Category', 'Expense Method', 'Expense Amount', 'Closing Balance']);
     
-    transactions.forEach(t => {
+    sortedTransactions.forEach(t => {
         const dateStr = new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const openingBal = parseFloat(t.opening_balance).toFixed(2);
         const closingBal = parseFloat(t.closing_balance).toFixed(2);
@@ -754,16 +757,19 @@ function downloadPDF(transactions, fromDate, toDate, incomeCategories, expenseCa
     doc.setFontSize(11);
     doc.text(`Date Range: ${fromDate} to ${toDate}`, 14, 30);
     
+    // Sort transactions by ID to ensure correct order
+    const sortedTransactions = [...transactions].sort((a, b) => a.id - b.id);
+    
     // Calculate summary
     let totalIncome = 0;
     let totalExpense = 0;
     
-    transactions.forEach(t => {
+    sortedTransactions.forEach(t => {
         totalIncome += parseFloat(t.total_income) || 0;
         totalExpense += parseFloat(t.total_expense) || 0;
     });
     
-    const currentBalance = transactions.length > 0 ? parseFloat(transactions[transactions.length - 1].closing_balance) : 0;
+    const currentBalance = sortedTransactions.length > 0 ? parseFloat(sortedTransactions[sortedTransactions.length - 1].closing_balance) : 0;
     
     // Summary table
     doc.autoTable({
@@ -781,7 +787,7 @@ function downloadPDF(transactions, fromDate, toDate, incomeCategories, expenseCa
     // Prepare detailed table data
     const tableData = [];
     
-    transactions.forEach(t => {
+    sortedTransactions.forEach(t => {
         const dateStr = new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         const openingBal = parseFloat(t.opening_balance).toFixed(2);
         const closingBal = parseFloat(t.closing_balance).toFixed(2);
