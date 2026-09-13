@@ -1,38 +1,47 @@
-// Category labels mapping
-// VERSION: 2026-05-24-v2-FIXED (with parseFloat and error handling)
-const incomeLabels = {
-    'room_rent': { name: 'Room Rent', icon: '🏠' },
-    'mattress_charge': { name: 'Mattress Charge', icon: '🛏️' },
-    'travel_cab': { name: 'Travel/Cab Service', icon: '🚕' },
-    'kitchen_facility': { name: 'Kitchen Facility', icon: '🍳' },
-    'clean_charge': { name: 'Clean Charge', icon: '🧹' },
-    'misc_receipt': { name: 'Misc Receipt', icon: '💵' }
-};
+// Category labels and icons - will be loaded dynamically from settings
+let incomeLabels = {};
+let expenseLabels = {};
+let categoryMetadata = [];
 
-const expenseLabels = {
-    'brokerage': { name: 'Brokerage', icon: '🤝' },
-    'salary': { name: 'Salary', icon: '💼' },
-    'room_cleaning_charge': { name: 'Room Cleaning Charge', icon: '🧼' },
-    'generator_maintenance': { name: 'Generator & Maintenance', icon: '⚡' },
-    'hotel_stationary': { name: 'Hotel Stationary', icon: '📝' },
-    'hotel_cleaning_sanitation': { name: 'Hotel Cleaning & Sanitation', icon: '🧽' },
-    'rent_taxes': { name: 'Rent & Taxes', icon: '🏢' },
-    'tv_recharge': { name: 'TV Recharge', icon: '📺' },
-    'camera_wifi': { name: 'Camera/WiFi', icon: '📡' },
-    'plumbing_maintenance': { name: 'Plumbing & Maintenance', icon: '🔧' },
-    'electricity_maintenance': { name: 'Electricity & Maintenance', icon: '💡' },
-    'electricity_bill': { name: 'Electricity Bill', icon: '⚡' },
-    'staff_fooding': { name: 'Staff Fooding', icon: '🍽️' },
-    'laundry': { name: 'Laundry', icon: '👕' },
-    'owner_kitchen_cab': { name: 'Owner Kitchen & Cab Payment', icon: '🚗' },
-    'office_stationary': { name: 'Office Stationary', icon: '📋' },
-    'misc_expenses': { name: 'Misc Expenses', icon: '💳' }
-};
-
-// Load data on page load
+// Load category metadata on page load
 document.addEventListener('DOMContentLoaded', () => {
-    loadCategoryData();
+    loadCategoryMetadata().then(() => {
+        loadCategoryData();
+    });
 });
+
+// Load category metadata (labels, icons) from settings
+async function loadCategoryMetadata() {
+    try {
+        const res = await fetch('/api/settings', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load settings');
+        const items = await res.json();
+        
+        // Build label and icon maps
+        incomeLabels = {};
+        expenseLabels = {};
+        categoryMetadata = items;
+        
+        items.forEach(item => {
+            if (item.type === 'income_category') {
+                incomeLabels[item.key_id] = {
+                    name: item.label,
+                    icon: item.icon || '💵'
+                };
+            } else if (item.type === 'expense_category') {
+                expenseLabels[item.key_id] = {
+                    name: item.label,
+                    icon: item.icon || '💳'
+                };
+            }
+        });
+    } catch (error) {
+        console.error('Error loading category metadata:', error);
+        // Fallback to empty objects - categories will still load from API
+        incomeLabels = {};
+        expenseLabels = {};
+    }
+}
 
 // Load category totals
 async function loadCategoryData() {
@@ -67,26 +76,31 @@ async function loadCategoryData() {
         let totalIncome = 0;
         let totalExpense = 0;
 
-        // Display income categories
+        // Display income categories - using dynamic categories from API
         const incomeGrid = document.getElementById('incomeGrid');
         incomeGrid.innerHTML = '';
         
-        const sortedIncome = Object.entries(data.income).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
+        const incomeCategories = (data.categories || []).filter(c => c.type === 'income_category');
         
-        sortedIncome.forEach(([category, amount]) => {
-            const numAmount = parseFloat(amount) || 0;
-            totalIncome += numAmount;
-            const label = incomeLabels[category];
-            
-            // Skip if label not found
-            if (!label) {
-                console.warn(`No label found for income category: ${category}`);
-                return;
-            }
+        // Sort by amount descending
+        const sortedIncome = incomeCategories.sort((a, b) => {
+            const amountA = parseFloat(data.income[a.key_id]) || 0;
+            const amountB = parseFloat(data.income[b.key_id]) || 0;
+            return amountB - amountA;
+        });
+        
+        if (incomeCategories.length === 0) {
+            incomeGrid.innerHTML = '<div class="loading-message">No income categories found</div>';
+        }
+        
+        sortedIncome.forEach(category => {
+            const amount = parseFloat(data.income[category.key_id]) || 0;
+            totalIncome += amount;
+            const label = incomeLabels[category.key_id] || { name: category.label, icon: category.icon || '💵' };
             
             // Count number of entries for this category
             const entryCount = window.allTransactions.filter(t => {
-                const amt = parseFloat(t[category]) || 0;
+                const amt = parseFloat(t[category.key_id]) || 0;
                 return amt > 0;
             }).length;
             
@@ -97,10 +111,10 @@ async function loadCategoryData() {
                     <div class="category-name">${label.name}</div>
                     <div class="category-icon">${label.icon}</div>
                 </div>
-                <div class="category-amount">₹${numAmount.toFixed(2)}</div>
+                <div class="category-amount">₹${amount.toFixed(2)}</div>
                 <div class="category-count">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</div>
                 <div class="category-footer">
-                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'income', '${label.name}')" ${numAmount === 0 ? 'disabled' : ''}>
+                    <button class="btn-details" onclick="showCategoryDetails('${category.key_id}', 'income', '${label.name}')" ${amount === 0 ? 'disabled' : ''}>
                         View Details
                     </button>
                 </div>
@@ -108,26 +122,31 @@ async function loadCategoryData() {
             incomeGrid.appendChild(card);
         });
 
-        // Display expense categories
+        // Display expense categories - using dynamic categories from API
         const expenseGrid = document.getElementById('expenseGrid');
         expenseGrid.innerHTML = '';
         
-        const sortedExpense = Object.entries(data.expense).sort((a, b) => parseFloat(b[1]) - parseFloat(a[1]));
+        const expenseCategories = (data.categories || []).filter(c => c.type === 'expense_category');
         
-        sortedExpense.forEach(([category, amount]) => {
-            const numAmount = parseFloat(amount) || 0;
-            totalExpense += numAmount;
-            const label = expenseLabels[category];
-            
-            // Skip if label not found
-            if (!label) {
-                console.warn(`No label found for expense category: ${category}`);
-                return;
-            }
+        // Sort by amount descending
+        const sortedExpense = expenseCategories.sort((a, b) => {
+            const amountA = parseFloat(data.expense[a.key_id]) || 0;
+            const amountB = parseFloat(data.expense[b.key_id]) || 0;
+            return amountB - amountA;
+        });
+        
+        if (expenseCategories.length === 0) {
+            expenseGrid.innerHTML = '<div class="loading-message">No expense categories found</div>';
+        }
+        
+        sortedExpense.forEach(category => {
+            const amount = parseFloat(data.expense[category.key_id]) || 0;
+            totalExpense += amount;
+            const label = expenseLabels[category.key_id] || { name: category.label, icon: category.icon || '💳' };
             
             // Count number of entries for this category
             const entryCount = window.allTransactions.filter(t => {
-                const amt = parseFloat(t[category]) || 0;
+                const amt = parseFloat(t[category.key_id]) || 0;
                 return amt > 0;
             }).length;
             
@@ -138,10 +157,10 @@ async function loadCategoryData() {
                     <div class="category-name">${label.name}</div>
                     <div class="category-icon">${label.icon}</div>
                 </div>
-                <div class="category-amount">₹${numAmount.toFixed(2)}</div>
+                <div class="category-amount">₹${amount.toFixed(2)}</div>
                 <div class="category-count">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}</div>
                 <div class="category-footer">
-                    <button class="btn-details" onclick="showCategoryDetails('${category}', 'expense', '${label.name}')" ${numAmount === 0 ? 'disabled' : ''}>
+                    <button class="btn-details" onclick="showCategoryDetails('${category.key_id}', 'expense', '${label.name}')" ${amount === 0 ? 'disabled' : ''}>
                         View Details
                     </button>
                 </div>
@@ -196,7 +215,7 @@ function refreshData(btn) {
     });
 }
 
-// Show category details
+// Show category details in modal
 async function showCategoryDetails(category, type, categoryName) {
     const modal = document.getElementById('categoryModal');
     const modalTitle = document.getElementById('modalTitle');
@@ -213,6 +232,7 @@ async function showCategoryDetails(category, type, categoryName) {
         // Filter transactions that have this category
         const categoryField = category;
         const methodField = category + '_method';
+        const commentField = category + '_comment';
         
         const filteredTransactions = transactions.filter(t => {
             const amount = parseFloat(t[categoryField]) || 0;
@@ -221,6 +241,7 @@ async function showCategoryDetails(category, type, categoryName) {
             date: t.date,
             amount: parseFloat(t[categoryField]) || 0,
             method: t[methodField] || '-',
+            comment: t[commentField] || '',
             id: t.id
         }));
         
@@ -232,7 +253,8 @@ async function showCategoryDetails(category, type, categoryName) {
         // Calculate total
         const total = filteredTransactions.reduce((sum, t) => sum + t.amount, 0);
         
-        // Build table
+        // Build table - include comments if present
+        const hasComments = filteredTransactions.some(t => t.comment && t.comment.trim());
         let tableHTML = `
             <table class="details-table">
                 <thead>
@@ -240,6 +262,7 @@ async function showCategoryDetails(category, type, categoryName) {
                         <th>Date</th>
                         <th>Payment Method</th>
                         <th>Amount</th>
+                        ${hasComments ? '<th>Details/Notes</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
@@ -250,18 +273,43 @@ async function showCategoryDetails(category, type, categoryName) {
                               t.method === 'upi' ? '<span class="method-badge badge-upi">UPI</span>' :
                               '<span class="method-badge badge-none">-</span>';
             
+            let commentCell = '';
+            if (hasComments) {
+                // For salary entries, parse the structured comment
+                let displayComment = t.comment;
+                if (t.comment && t.comment.includes('₹')) {
+                    // This might be a salary entry with multiple sub-entries
+                    // Parse format: (₹5000 - CASH - Shakti - Advance - Note) | (₹3000 - UPI - Kabu - Full)
+                    displayComment = t.comment.split('|').map(entry => {
+                        entry = entry.trim();
+                        const match = entry.match(/\(₹([\d.]+)\s*-\s*(\w+)\s*-\s*(\w+)(?:\s*-\s*(\w+))?(?:\s*-\s*(.+))?\)/);
+                        if (match) {
+                            const amt = match[1];
+                            const method = match[2];
+                            const name = match[3];
+                            const type = match[4] || 'Full';
+                            const note = match[5] ? ` - ${match[5]}` : '';
+                            return `${name} (${type}) ${note}`;
+                        }
+                        return entry;
+                    }).join(' | ');
+                }
+                commentCell = `<td title="${displayComment}">${displayComment ? displayComment.substring(0, 40) + (displayComment.length > 40 ? '...' : '') : '-'}</td>`;
+            }
+            
             tableHTML += `
                 <tr>
                     <td>${new Date(t.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                     <td>${methodBadge}</td>
                     <td class="amount-cell ${type === 'income' ? 'positive' : 'negative'}">₹${t.amount.toFixed(2)}</td>
+                    ${commentCell}
                 </tr>
             `;
         });
         
         tableHTML += `
                     <tr class="total-row">
-                        <td colspan="2"><strong>Total ${categoryName}</strong></td>
+                        <td colspan="${hasComments ? 4 : 3}"><strong>Total ${categoryName}</strong></td>
                         <td class="amount-cell ${type === 'income' ? 'positive' : 'negative'}">₹${total.toFixed(2)}</td>
                     </tr>
                 </tbody>

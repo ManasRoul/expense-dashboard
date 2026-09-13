@@ -186,10 +186,15 @@ function loadCategoryData(categoryId, transaction) {
     const method = transaction[methodField] || '';
     const comment = transaction[commentField] || '';
     
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try snake_case version
+        container = document.getElementById(`entries-${amountField}`);
+    }
     
     if (!container) {
-        console.error(`Container not found for category: ${categoryId}`);
+        console.warn(`Container not found for category: ${categoryId} (tried both ${categoryId} and ${amountField})`);
         return;
     }
     
@@ -364,7 +369,7 @@ function createEntryRow(categoryId, index) {
                 </select>
                 <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                     <option value="">Payment</option>
-                    <option value="cash">Cash</option>
+                    <option value="cash" selected>Cash</option>
                     <option value="upi">UPI</option>
                 </select>
                 <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
@@ -380,7 +385,7 @@ function createEntryRow(categoryId, index) {
         <div class="entry-row" data-category="${categoryId}" data-index="${index}">
             <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                 <option value="">Payment</option>
-                <option value="cash">Cash</option>
+                <option value="cash" selected>Cash</option>
                 <option value="upi">UPI</option>
             </select>
             <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
@@ -393,7 +398,19 @@ function createEntryRow(categoryId, index) {
 
 // Add a new entry row to a category
 function addEntry(categoryId) {
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try converting to snake_case and looking again
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        container = document.getElementById(`entries-${snakeCaseId}`);
+    }
+    
+    if (!container) {
+        console.error(`Container not found for category: ${categoryId}`);
+        return;
+    }
+    
     const currentEntries = container.querySelectorAll('.entry-row').length;
     
     const newRow = document.createElement('div');
@@ -403,7 +420,19 @@ function addEntry(categoryId) {
 
 // Remove an entry row from a category
 function removeEntry(categoryId, index) {
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try converting to snake_case and looking again
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        container = document.getElementById(`entries-${snakeCaseId}`);
+    }
+    
+    if (!container) {
+        console.error(`Container not found for category: ${categoryId}`);
+        return;
+    }
+    
     const rows = container.querySelectorAll('.entry-row');
     
     if (rows.length > 1) {
@@ -416,7 +445,19 @@ function removeEntry(categoryId, index) {
 
 // Reindex entries after removal
 function reindexEntries(categoryId) {
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try converting to snake_case and looking again
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        container = document.getElementById(`entries-${snakeCaseId}`);
+    }
+    
+    if (!container) {
+        console.error(`Container not found for category: ${categoryId}`);
+        return;
+    }
+    
     const rows = container.querySelectorAll('.entry-row');
     
     rows.forEach((row, newIndex) => {
@@ -430,7 +471,19 @@ function reindexEntries(categoryId) {
 
 // Calculate total for a specific category
 function calculateCategoryTotal(categoryId) {
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try converting to snake_case and looking again
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        container = document.getElementById(`entries-${snakeCaseId}`);
+    }
+    
+    if (!container) {
+        console.warn(`Container not found for category: ${categoryId}`);
+        return;
+    }
+    
     const rows = container.querySelectorAll('.entry-row');
     
     let total = 0;
@@ -441,8 +494,15 @@ function calculateCategoryTotal(categoryId) {
     });
 
     // Update category total display
-    const totalDisplay = document.getElementById(`total-${categoryId}`);
-    totalDisplay.textContent = `₹${total.toFixed(2)}`;
+    let totalDisplay = document.getElementById(`total-${categoryId}`);
+    if (!totalDisplay) {
+        // Try snake_case version
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        totalDisplay = document.getElementById(`total-${snakeCaseId}`);
+    }
+    if (totalDisplay) {
+        totalDisplay.textContent = `₹${total.toFixed(2)}`;
+    }
 
     // Trigger overall total calculation
     calculateTotal();
@@ -455,23 +515,37 @@ function calculateTotal() {
     // Calculate total income
     let totalIncome = 0;
     incomeCategories.forEach(category => {
-        const container = document.getElementById(`entries-${category.id}`);
-        const rows = container.querySelectorAll('.entry-row');
-        rows.forEach(row => {
-            const amount = parseFloat(row.querySelector('[data-field="amount"]').value) || 0;
-            totalIncome += amount;
-        });
+        let container = document.getElementById(`entries-${category.id}`);
+        if (!container) {
+            // Try snake_case version
+            const snakeCaseId = category.id.replace(/([A-Z])/g, '_$1').toLowerCase();
+            container = document.getElementById(`entries-${snakeCaseId}`);
+        }
+        if (container) {
+            const rows = container.querySelectorAll('.entry-row');
+            rows.forEach(row => {
+                const amount = parseFloat(row.querySelector('[data-field="amount"]').value) || 0;
+                totalIncome += amount;
+            });
+        }
     });
 
     // Calculate total expense
     let totalExpense = 0;
     expenseCategories.forEach(category => {
-        const container = document.getElementById(`entries-${category.id}`);
-        const rows = container.querySelectorAll('.entry-row');
-        rows.forEach(row => {
-            const amount = parseFloat(row.querySelector('[data-field="amount"]').value) || 0;
-            totalExpense += amount;
-        });
+        let container = document.getElementById(`entries-${category.id}`);
+        if (!container) {
+            // Try snake_case version
+            const snakeCaseId = category.id.replace(/([A-Z])/g, '_$1').toLowerCase();
+            container = document.getElementById(`entries-${snakeCaseId}`);
+        }
+        if (container) {
+            const rows = container.querySelectorAll('.entry-row');
+            rows.forEach(row => {
+                const amount = parseFloat(row.querySelector('[data-field="amount"]').value) || 0;
+                totalExpense += amount;
+            });
+        }
     });
 
     // Update totals
@@ -482,7 +556,19 @@ function calculateTotal() {
 
 // Get all entries for a category as a detailed string
 function getCategoryData(categoryId) {
-    const container = document.getElementById(`entries-${categoryId}`);
+    // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
+    let container = document.getElementById(`entries-${categoryId}`);
+    if (!container) {
+        // Try converting to snake_case and looking again
+        const snakeCaseId = categoryId.replace(/([A-Z])/g, '_$1').toLowerCase();
+        container = document.getElementById(`entries-${snakeCaseId}`);
+    }
+    
+    if (!container) {
+        console.error(`Container not found for category: ${categoryId}`);
+        return { amount: 0, method: '', comment: '' };
+    }
+    
     const rows = container.querySelectorAll('.entry-row');
     const isSalary = categoryId === 'salary';
     
