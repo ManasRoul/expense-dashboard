@@ -380,6 +380,178 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* View Mode Button Styles */
+        .view-mode-btn {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1em;
+        }
+
+        .view-mode-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+            transform: translateY(-2px);
+        }
+
+        .view-mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Monthly View Styles */
+        .monthly-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .month-summary {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #667eea;
+        }
+
+        .month-summary-header {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .month-summary-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .month-stat-item {
+            text-align: center;
+            padding: 10px;
+            background: #f8fafc;
+            border-radius: 6px;
+        }
+
+        .month-stat-label {
+            font-size: 0.85em;
+            color: #64748b;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .month-stat-value {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .month-payments-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .month-payment-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 0.95em;
+        }
+
+        .month-payment-row:last-child {
+            border-bottom: none;
+        }
+
+        .month-payment-date {
+            color: #64748b;
+            min-width: 80px;
+        }
+
+        .month-payment-type {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            min-width: 70px;
+            text-align: center;
+        }
+
+        .month-payment-type.advance {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .month-payment-type.full {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .month-payment-amount {
+            font-weight: 700;
+            color: #047857;
+            min-width: 90px;
+            text-align: right;
+        }
+
+        /* Salary info box styles */
+        .salary-info-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%);
+            padding: 15px 20px;
+            border-radius: 10px;
+            border-left: 4px solid #f59e0b;
+            margin-top: 15px;
+        }
+
+        .salary-info-label {
+            color: #92400e;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .salary-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .salary-info-item {
+            text-align: center;
+        }
+
+        .salary-info-item-label {
+            font-size: 0.85em;
+            color: #b45309;
+            margin-bottom: 5px;
+        }
+
+        .salary-info-item-value {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #92400e;
+        }
+
+        .salary-info-item-value.positive {
+            color: #10b981;
+        }
+
+        .salary-info-item-value.negative {
+            color: #ef4444;
+        }
     </style>
 </head>
 <body>
@@ -390,6 +562,27 @@
             <a href="salary.html" class="back-button">← Back to Salary Page</a>
             <h1>Employee Salary Report</h1>
             <p style="color: #cbcfd6;">Complete salary history for all employees</p>
+        </div>
+
+        <!-- View Mode Selector -->
+        <div style="display: flex; gap: 15px; margin-bottom: 25px; justify-content: center; flex-wrap: wrap; align-items: center;">
+            <button class="view-mode-btn active" onclick="switchViewMode('overall')" id="btnOverall">
+                📊 Overall Summary
+            </button>
+            <button class="view-mode-btn" onclick="switchViewMode('monthly')" id="btnMonthly">
+                📅 Monthly View
+            </button>
+            <button style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s ease;" onclick="refreshSalaryData()" title="Refresh data from dashboard">
+                🔄 Refresh
+            </button>
+        </div>
+
+        <!-- Month Selector (for monthly view) -->
+        <div id="monthSelector" style="display: none; margin-bottom: 25px; text-align: center;">
+            <label for="monthInput" style="font-weight: 600; color: #1e293b; margin-right: 10px;">Select Month:</label>
+            <input type="month" id="monthInput" style="padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 6px; font-size: 1em; cursor: pointer;">
+            <button class="btn btn-secondary" onclick="applyMonthFilter()" style="margin-left: 10px;">Filter</button>
+            <button class="btn btn-secondary" onclick="clearMonthFilter()" style="margin-left: 5px;">Clear</button>
         </div>
 
         <div id="employeesContainer" class="employees-grid">
