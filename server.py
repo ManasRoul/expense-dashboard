@@ -462,6 +462,16 @@ def init_db():
     
     execute_query(settings_table_query)
     
+    # Add salary_amount column to settings table if it doesn't exist
+    try:
+        if USE_MYSQL:
+            execute_query("ALTER TABLE settings ADD COLUMN salary_amount DECIMAL(10, 2) DEFAULT 0")
+        else:
+            execute_query("ALTER TABLE settings ADD COLUMN salary_amount REAL DEFAULT 0")
+    except:
+        # Column might already exist, which is fine
+        pass
+    
     # Seed default settings if empty
     existing_settings = execute_query("SELECT COUNT(*) as cnt FROM settings", fetch=True, fetchone=True)
     if existing_settings and existing_settings['cnt'] == 0:
@@ -917,8 +927,25 @@ def handle_transaction(transaction_id):
                 audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'reason': 'Insufficient permissions', 'role': session.get('role')})
                 return jsonify({'error': 'Only owners can delete transactions'}), 403
             
-            # Delete the transaction
+            # Get the transaction to check if it has salary data
             placeholder = '%s' if USE_MYSQL else '?'
+            transaction = execute_query(
+                f'SELECT * FROM transactions WHERE id = {placeholder}',
+                (transaction_id,), fetch=True, fetchone=True
+            )
+            
+            if not transaction:
+                return jsonify({'error': 'Transaction not found'}), 404
+            
+            # If this is a salary transaction (has salary amount), also delete salary_records
+            if transaction.get('salary') and transaction.get('salary') > 0:
+                # Delete all salary_records for this transaction date
+                execute_query(
+                    f'DELETE FROM salary_records WHERE DATE(date) = DATE({placeholder})',
+                    (transaction['date'],)
+                )
+            
+            # Delete the transaction
             delete_query = f'DELETE FROM transactions WHERE id = {placeholder}'
             execute_query(delete_query, (transaction_id,))
             
@@ -1186,8 +1213,33 @@ def delete_salary_record(record_id):
             return jsonify({'error': 'Only owners can delete salary records'}), 403
 
         placeholder = '%s' if USE_MYSQL else '?'
+        
+        # Get the salary record to find its date
+        salary_record = execute_query(
+            f'SELECT date FROM salary_records WHERE id = {placeholder}',
+            (record_id,), fetch=True, fetchone=True
+        )
+        
+        if not salary_record:
+            return jsonify({'error': 'Salary record not found'}), 404
+        
+        # Delete the salary record
         delete_query = f'DELETE FROM salary_records WHERE id = {placeholder}'
         execute_query(delete_query, (record_id,))
+        
+        # Check if there are any remaining salary records for this date
+        salary_date = salary_record['date']
+        remaining_records = execute_query(
+            f'SELECT COUNT(*) as cnt FROM salary_records WHERE DATE(date) = DATE({placeholder})',
+            (salary_date,), fetch=True, fetchone=True
+        )
+        
+        # If no salary records remain for this date, delete the corresponding transaction
+        if remaining_records and remaining_records['cnt'] == 0:
+            execute_query(
+                f'DELETE FROM transactions WHERE DATE(date) = DATE({placeholder}) AND salary > 0',
+                (salary_date,)
+            )
         
         return jsonify({'message': 'Salary record deleted successfully'}), 200
     except Exception as e:
@@ -1226,6 +1278,7 @@ def add_setting():
         setting_type = data.get('type')
         key_id = data.get('key_id')
         label = data.get('label')
+        salary_amount = data.get('salary_amount', 0)
         
         if not all([setting_type, key_id, label]):
             return jsonify({'error': 'type, key_id, and label are required'}), 400
@@ -1245,10 +1298,16 @@ def add_setting():
             if existing['active'] == 1:
                 return jsonify({'error': 'This key_id already exists for this type'}), 409
             # Reactivate the soft-deleted entry
-            execute_query(
-                f"UPDATE settings SET active = 1, label = {placeholder} WHERE id = {placeholder}",
-                (label, existing['id'])
-            )
+            if setting_type == 'employee' and salary_amount > 0:
+                execute_query(
+                    f"UPDATE settings SET active = 1, label = {placeholder}, salary_amount = {placeholder} WHERE id = {placeholder}",
+                    (label, salary_amount, existing['id'])
+                )
+            else:
+                execute_query(
+                    f"UPDATE settings SET active = 1, label = {placeholder} WHERE id = {placeholder}",
+                    (label, existing['id'])
+                )
             # Ensure columns exist in transactions table
             if setting_type in ('income_category', 'expense_category'):
                 add_category_columns(key_id)
@@ -1261,10 +1320,16 @@ def add_setting():
         )
         next_order = (max_order['max_order'] or 0) + 1
         
-        execute_query(
-            f"INSERT INTO settings (type, key_id, label, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
-            (setting_type, key_id, label, next_order)
-        )
+        if setting_type == 'employee' and salary_amount > 0:
+            execute_query(
+                f"INSERT INTO settings (type, key_id, label, sort_order, salary_amount) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                (setting_type, key_id, label, next_order, salary_amount)
+            )
+        else:
+            execute_query(
+                f"INSERT INTO settings (type, key_id, label, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                (setting_type, key_id, label, next_order)
+            )
         
         # Add columns to transactions table for income/expense categories
         if setting_type in ('income_category', 'expense_category'):
@@ -1284,15 +1349,29 @@ def update_setting(setting_id):
         
         data = request.json
         label = data.get('label')
+        salary_amount = data.get('salary_amount')
         
-        if not label:
-            return jsonify({'error': 'label is required'}), 400
+        if not label and salary_amount is None:
+            return jsonify({'error': 'label or salary_amount is required'}), 400
         
         placeholder = '%s' if USE_MYSQL else '?'
-        execute_query(
-            f"UPDATE settings SET label = {placeholder} WHERE id = {placeholder}",
-            (label, setting_id)
-        )
+        
+        # Build update query based on what fields are provided
+        if label and salary_amount is not None:
+            execute_query(
+                f"UPDATE settings SET label = {placeholder}, salary_amount = {placeholder} WHERE id = {placeholder}",
+                (label, salary_amount, setting_id)
+            )
+        elif label:
+            execute_query(
+                f"UPDATE settings SET label = {placeholder} WHERE id = {placeholder}",
+                (label, setting_id)
+            )
+        elif salary_amount is not None:
+            execute_query(
+                f"UPDATE settings SET salary_amount = {placeholder} WHERE id = {placeholder}",
+                (salary_amount, setting_id)
+            )
         
         return jsonify({'message': 'Setting updated'}), 200
     except Exception as e:
@@ -1350,8 +1429,8 @@ if __name__ == '__main__':
     print("=" * 50)
     print("Financial Dashboard Server Starting...")
     print("=" * 50)
-    print("Dashboard: http://localhost:5000/dashboard.html")
-    print("Categories: http://localhost:5000/categories.html")
-    print("Form: http://localhost:5000/form.html")
+    print("Dashboard: http://localhost:5001/dashboard.html")
+    print("Categories: http://localhost:5001/categories.html")
+    print("Form: http://localhost:5001/form.html")
     print("=" * 50)
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5001)

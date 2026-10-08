@@ -198,6 +198,10 @@ document.getElementById('salaryForm').addEventListener('submit', async function(
             setDefaultDate();
             calculateTotal();
             loadSalaryRecords();
+            // Redirect to dashboard after 1 second to show the transaction
+            setTimeout(() => {
+                window.location.href = 'dashboard.html';
+            }, 1000);
         } else {
             alert(`Error: ${result.error}`);
         }

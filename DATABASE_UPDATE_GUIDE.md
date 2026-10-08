@@ -8,7 +8,13 @@ This guide will help you safely update your live MySQL database with the latest 
 
 ### On Your Local Machine:
 
-1. **Update your config.py with live server MySQL credentials:**
+1. **Create `.env` file with your live server credentials (RECOMMENDED):**
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your MySQL credentials
+   ```
+   
+   **Or update `config.py` if you prefer:**
    ```python
    USE_MYSQL = True
    MYSQL_CONFIG = {
@@ -60,7 +66,40 @@ The sync script:
 
 ---
 
-## 🔒 Safety & Backups
+## 🔒 Security & Backups
+
+### Why Use `.env` Instead of `config.py`? 🔐
+
+**Using `.env` file (RECOMMENDED):**
+- ✅ Passwords never committed to Git
+- ✅ Works on both local and live server
+- ✅ Same approach as `fix_columns.py`
+- ✅ Industry best practice
+- ✅ Easy to manage different credentials per environment
+
+**Using `config.py`:**
+- ⚠️ Risk of committing passwords to Git
+- ⚠️ Need to keep separate versions locally/live
+- ⚠️ Less secure if repository is public
+
+### Setup `.env` Securely
+
+1. **Copy example:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit with your credentials:**
+   ```bash
+   nano .env
+   ```
+
+3. **Add to `.gitignore`:**
+   ```bash
+   echo ".env" >> .gitignore
+   ```
+
+4. **Never commit `.env` to Git** ✅
 
 ### ALWAYS backup before running:
 ```bash
@@ -78,7 +117,35 @@ mysql -h your_host -u your_user -p your_database < database_backup_financial_202
 
 ## 📖 Step-by-Step Instructions
 
-### Step 1: Prepare Configuration
+### Step 1: Prepare Configuration (Two Options)
+
+#### Option A: Using `.env` File (RECOMMENDED - More Secure) ⭐
+
+**Create a `.env` file in the app directory:**
+
+```bash
+# Copy the example
+cp .env.example .env
+
+# Edit .env with your credentials
+nano .env
+```
+
+**`.env` file contents:**
+```
+DB_HOST=localhost
+DB_USER=your_mysql_username
+DB_PASSWORD=your_mysql_password
+DB_NAME=your_database_name
+DB_PORT=3306
+```
+
+**Important:** Add `.env` to `.gitignore` so passwords aren't committed!
+```bash
+echo ".env" >> .gitignore
+```
+
+#### Option B: Using `config.py` (Less Secure)
 
 **Edit `config.py` with your live server details:**
 
@@ -93,6 +160,8 @@ MYSQL_CONFIG = {
     'port': 3306,
 }
 ```
+
+⚠️ **DO NOT commit `config.py` with real passwords to Git!**
 
 ### Step 2: Create Backup (CRITICAL)
 

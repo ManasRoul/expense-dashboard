@@ -43,7 +43,12 @@
 
         <!-- Salary Records -->
         <div class="records-section">
-            <h2>Recent Salary Records</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Recent Salary Records</h2>
+                <button onclick="loadSalaryRecords()" style="padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s ease;" title="Refresh salary records">
+                    🔄 Refresh
+                </button>
+            </div>
             <div class="table-container">
                 <table id="salaryTable">
                     <thead>
