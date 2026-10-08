@@ -206,7 +206,9 @@ class DatabaseFixer:
             return True
         
         print("📝 Creating transaction_details table...")
-        sql = """
+        
+        # First try with foreign key
+        sql_with_fk = """
         CREATE TABLE transaction_details (
             id INT AUTO_INCREMENT PRIMARY KEY,
             transaction_id INT,
@@ -233,10 +235,68 @@ class DatabaseFixer:
         )
         """
         
-        if self.execute_sql(sql, "Create transaction_details table"):
-            self.changes_made.append("✅ Created transaction_details table")
+        # If FK fails, create without FK
+        sql_without_fk = """
+        CREATE TABLE transaction_details (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            transaction_id INT,
+            category_type VARCHAR(50),
+            category_id VARCHAR(100),
+            amount DECIMAL(15, 2),
+            payment_method VARCHAR(20),
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_transaction (transaction_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """ if self.use_mysql else """
+        CREATE TABLE transaction_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER,
+            category_type VARCHAR(50),
+            category_id VARCHAR(100),
+            amount DECIMAL(15, 2),
+            payment_method VARCHAR(20),
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_transaction (transaction_id)
+        )
+        """
+        
+        # Try with foreign key first
+        try:
+            self.cursor.execute(sql_with_fk)
+            if self.use_mysql:
+                self.conn.commit()
+            else:
+                self.conn.commit()
+            print("   ✅ Created with foreign key constraint")
+            self.changes_made.append("✅ Created transaction_details table (with FK)")
             return True
-        return False
+        except Exception as e:
+            # Check if it's a foreign key error
+            error_str = str(e).lower()
+            if 'foreign key' in error_str or 'error: 150' in error_str:
+                print(f"   ⚠️  Foreign key constraint failed: {e}")
+                print("   🔧 Retrying without foreign key constraint...")
+                
+                # Try without foreign key
+                try:
+                    self.cursor.execute(sql_without_fk)
+                    if self.use_mysql:
+                        self.conn.commit()
+                    else:
+                        self.conn.commit()
+                    print("   ✅ Created without foreign key (transactions table may need InnoDB)")
+                    self.changes_made.append("✅ Created transaction_details table (without FK)")
+                    return True
+                except Exception as e2:
+                    print(f"   ❌ Failed to create table: {e2}")
+                    self.errors.append(f"Create transaction_details table: {e2}")
+                    return False
+            else:
+                print(f"   ❌ Failed to create table: {e}")
+                self.errors.append(f"Create transaction_details table: {e}")
+                return False
     
     def create_salary_records_table(self):
         """Create salary_records table"""
@@ -283,6 +343,60 @@ class DatabaseFixer:
             self.changes_made.append("✅ Created salary_records table")
             return True
         return False
+    
+    def check_and_fix_transactions_engine(self):
+        """Ensure transactions table uses InnoDB engine (required for foreign keys)"""
+        if not self.table_exists('transactions') or not self.use_mysql:
+            return True
+        
+        try:
+            self.cursor.execute("""
+                SELECT ENGINE FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions'
+            """)
+            result = self.cursor.fetchone()
+            
+            if result and result.get('ENGINE', '').upper() != 'INNODB':
+                print(f"🔧 Converting transactions table to InnoDB...")
+                self.cursor.execute("ALTER TABLE transactions ENGINE=InnoDB")
+                self.conn.commit()
+                self.changes_made.append("✅ Converted transactions table to InnoDB")
+                return True
+            return True
+        except Exception as e:
+            print(f"⚠️  Could not check/fix transactions engine: {e}")
+            return True  # Don't block execution
+    
+    def add_foreign_key_to_transaction_details(self):
+        """Add foreign key to transaction_details if missing"""
+        if not self.table_exists('transaction_details') or not self.use_mysql:
+            return True
+        
+        try:
+            # Check if FK already exists
+            self.cursor.execute("""
+                SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                WHERE TABLE_NAME = 'transaction_details' 
+                AND COLUMN_NAME = 'transaction_id' 
+                AND REFERENCED_TABLE_NAME = 'transactions'
+            """)
+            
+            if not self.cursor.fetchone():
+                print("🔧 Adding foreign key to transaction_details...")
+                self.cursor.execute("""
+                    ALTER TABLE transaction_details 
+                    ADD CONSTRAINT fk_transaction_details_ibfk_1 
+                    FOREIGN KEY (transaction_id) REFERENCES transactions(id)
+                """)
+                self.conn.commit()
+                self.changes_made.append("✅ Added foreign key to transaction_details")
+            else:
+                print("⏭️  Foreign key already exists on transaction_details")
+            
+            return True
+        except Exception as e:
+            print(f"⚠️  Could not add foreign key: {e}")
+            return True  # Don't block execution
     
     def add_missing_columns_to_salary_records(self):
         """Add missing carryover columns to salary_records if it exists"""
@@ -352,6 +466,13 @@ class DatabaseFixer:
         self.create_transactions_table()
         self.create_transaction_details_table()
         self.create_salary_records_table()
+        
+        # Fix engine and foreign keys if using MySQL
+        if self.use_mysql:
+            print("\n🔧 Checking table compatibility...")
+            print("-" * 60)
+            self.check_and_fix_transactions_engine()
+            self.add_foreign_key_to_transaction_details()
         
         # Add missing columns to existing tables
         print("\n📋 Checking for missing columns...")
