@@ -404,7 +404,7 @@ function viewTransaction(id) {
         
         <div class="modal-actions" style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
             <button class="btn btn-primary" onclick="editTransaction(${id})">✏️ Edit Transaction</button>
-            <button class="btn btn-danger" onclick="deleteTransaction(${id})" style="background: #ef4444; border-color: #dc2626;">🗑️ Delete Entry</button>
+            ${localStorage.getItem('userRole') === 'owner' ? `<button class="btn btn-danger" onclick="deleteTransaction(${id})" style="background: #ef4444; border-color: #dc2626;">🗑️ Delete Entry</button>` : ''}
             <button class="btn btn-secondary" onclick="closeModal()">Close</button>
         </div>
     `;
@@ -454,7 +454,7 @@ async function deleteTransaction(id) {
 
 // Delete all transactions for a specific date
 async function deleteAllTransactionsForDate(dateStr) {
-    const transactionsToDelete = window.allTransactions.filter(t => t.date.split('T')[0] === dateStr);
+    const transactionsToDelete = window.allTransactions.filter(t => t.date.split('T')[0].split(' ')[0] === dateStr);
     const count = transactionsToDelete.length;
     
     if (!confirm(`Are you sure you want to delete all ${count} transaction(s) from ${dateStr}? This action cannot be undone.`)) {

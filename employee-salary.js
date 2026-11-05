@@ -4,6 +4,21 @@ let allEmployeesData = {};
 let employeeSettings = {};
 let selectedMonth = null;
 
+// Escape untrusted text (employee names, labels, etc.) before inserting into innerHTML
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
+// Parse a 'YYYY-MM-DD'-prefixed date string using local calendar fields
+// (avoids new Date(str) parsing as UTC and shifting a day in negative-UTC zones)
+function parseLocalDate(dateStr) {
+    const datePart = String(dateStr).split('T')[0].split(' ')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
 // Load salary data for all employees
 async function loadEmployeeSalaries() {
     try {
@@ -42,8 +57,9 @@ async function loadEmployeeSalaries() {
 
         allEmployeesData = employees;
         window._employeeRecords = employees;
-        displayEmployeeSalaries(employees);
-        setupMonthSelector();
+        // Re-render in whatever view the user is currently in, instead of
+        // always jumping back to Overall Summary / resetting the month filter
+        renderCurrentView(employees);
     } catch (error) {
         console.error('Error loading salary data:', error);
         document.getElementById('employeesContainer').innerHTML = `
@@ -58,6 +74,15 @@ async function loadEmployeeSalaries() {
 function refreshSalaryData() {
     console.log('Refreshing salary data...');
     loadEmployeeSalaries();
+}
+
+// Render whichever view (Overall / Monthly + selected month) the user is currently on
+function renderCurrentView(employees) {
+    if (currentViewMode === 'monthly') {
+        displayEmployeeSalariesByMonth(employees, selectedMonth);
+    } else {
+        displayEmployeeSalaries(employees);
+    }
 }
 
 // Store employee records for modal access
@@ -125,11 +150,11 @@ function displayEmployeeSalaries(employees) {
         const monthlySalary = empSettings.salary_amount || 0;
         
         // Calculate totals
-        const totalAmount = records.reduce((sum, r) => sum + r.amount, 0);
+        const totalAmount = records.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
         const advancePayments = records.filter(r => r.payment_type.toLowerCase() === 'advance');
         const fullPayments = records.filter(r => r.payment_type.toLowerCase() === 'full');
-        const advanceTotal = advancePayments.reduce((sum, r) => sum + r.amount, 0);
-        const fullTotal = fullPayments.reduce((sum, r) => sum + r.amount, 0);
+        const advanceTotal = advancePayments.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+        const fullTotal = fullPayments.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
         
         // Calculate remaining (salary - advances - full payments)
         const remaining = monthlySalary - advanceTotal - fullTotal;
@@ -138,7 +163,7 @@ function displayEmployeeSalaries(employees) {
         html += `
             <div class="employee-section">
                 <div class="employee-header">
-                    <h2>${employeeName}</h2>
+                    <h2>${escapeHtml(employeeName)}</h2>
                     <span style="color: #64748b; font-size: 0.9em;">${records.length} Payment(s)</span>
                 </div>
 
@@ -180,7 +205,7 @@ function displayEmployeeSalaries(employees) {
                     </div>
                 ` : ''}
 
-                <button class="btn-details" onclick="viewEmployeeDetails('${employeeName}')">
+                <button class="btn-details" data-employee-name="${escapeHtml(employeeName)}" onclick="viewEmployeeDetails(this.dataset.employeeName)">
                     📋 View All Details
                 </button>
             </div>
@@ -204,7 +229,7 @@ function displayEmployeeSalariesByMonth(employees, filterMonth = null) {
         const monthlyData = {};
         
         records.forEach(record => {
-            const date = new Date(record.date);
+            const date = parseLocalDate(record.date);
             const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             
             // Filter by selected month if provided
@@ -259,8 +284,8 @@ function displayEmployeeSalariesByMonth(employees, filterMonth = null) {
             
             // Build payment list HTML
             let paymentsHTML = '';
-            monthRecords.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(payment => {
-                const paymentDate = new Date(payment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            monthRecords.sort((a, b) => parseLocalDate(b.date) - parseLocalDate(a.date)).forEach(payment => {
+                const paymentDate = parseLocalDate(payment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const typeBadge = payment.payment_type.toLowerCase();
                 paymentsHTML += `
                     <div class="month-payment-row">
@@ -288,7 +313,7 @@ function displayEmployeeSalariesByMonth(employees, filterMonth = null) {
                 <div class="month-summary">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <div class="month-summary-header" style="margin-bottom: 0; border-bottom: none;">
-                            👤 ${employeeName}
+                            👤 ${escapeHtml(employeeName)}
                         </div>
                         <span style="color: #64748b; font-size: 0.9em; background: #f0f9ff; padding: 4px 12px; border-radius: 20px;">
                             ${monthRecords.length} payment(s)
@@ -352,13 +377,13 @@ function viewEmployeeDetails(employeeName) {
                         ${record.payment_type}
                     </span>
                 </td>
-                <td style="color: #047857; font-weight: 700;">Rs. ${record.amount.toFixed(2)}</td>
+                <td style="color: #047857; font-weight: 700;">Rs. ${parseFloat(record.amount || 0).toFixed(2)}</td>
                 <td>
                     <span class="payment-method-badge ${record.payment_method.toLowerCase()}">
                         ${record.payment_method}
                     </span>
                 </td>
-                <td style="color: #64748b; font-style: italic;">${record.note || '-'}</td>
+                <td style="color: #64748b; font-style: italic;">${record.note ? escapeHtml(record.note) : '-'}</td>
             </tr>
         `;
     });
@@ -390,4 +415,7 @@ function formatDate(dateString) {
 }
 
 // Load data on page load
-document.addEventListener('DOMContentLoaded', loadEmployeeSalaries);
+document.addEventListener('DOMContentLoaded', () => {
+    setupMonthSelector();
+    loadEmployeeSalaries();
+});

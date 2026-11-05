@@ -29,9 +29,30 @@ if USE_MYSQL:
         print("Run: pip install mysql-connector-python")
         exit(1)
 
+def _get_or_create_secret_key():
+    """Use SECRET_KEY env var if set; otherwise persist a generated key to disk
+    so it survives process restarts/multiple workers instead of regenerating
+    (and silently invalidating every session) each time the app starts."""
+    env_key = os.environ.get('SECRET_KEY')
+    if env_key:
+        return env_key
+    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.secret_key')
+    try:
+        if os.path.exists(key_file):
+            with open(key_file, 'r') as f:
+                existing = f.read().strip()
+                if existing:
+                    return existing
+        key = secrets.token_hex(32)
+        with open(key_file, 'w') as f:
+            f.write(key)
+        return key
+    except OSError:
+        return secrets.token_hex(32)
+
 app = Flask(__name__)
 # Generate secure random secret key
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.secret_key = _get_or_create_secret_key()
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
@@ -195,6 +216,19 @@ def add_category_columns(key_id):
     except Exception as e:
         print(f"Error adding category columns: {e}")
         # Don't raise - let it continue even if columns already exist
+
+def create_index_safe(index_name, table_name, column_expr):
+    """Create an index, tolerating 'already exists' errors.
+    Real MySQL (unlike SQLite/MariaDB) doesn't support CREATE INDEX IF NOT EXISTS."""
+    if USE_MYSQL:
+        sql = f"CREATE INDEX {index_name} ON {table_name}({column_expr})"
+    else:
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_expr})"
+    try:
+        execute_query(sql)
+    except Exception as e:
+        if 'duplicate' not in str(e).lower() and 'already exists' not in str(e).lower():
+            raise
 
 # Database setup
 def init_db():
@@ -412,6 +446,7 @@ def init_db():
             amount DECIMAL(10, 2) NOT NULL,
             payment_method VARCHAR(10) NOT NULL,
             note TEXT DEFAULT '',
+            transaction_id INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )'''
     else:
@@ -423,16 +458,30 @@ def init_db():
             amount REAL NOT NULL,
             payment_method TEXT NOT NULL,
             note TEXT DEFAULT '',
+            transaction_id INTEGER DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )'''
-    
+
     execute_query(salary_table_query)
-    
+
+    # Add transaction_id column to salary_records if it doesn't exist (older DBs)
+    try:
+        if USE_MYSQL:
+            execute_query("ALTER TABLE salary_records ADD COLUMN transaction_id INT DEFAULT NULL")
+        else:
+            execute_query("ALTER TABLE salary_records ADD COLUMN transaction_id INTEGER DEFAULT NULL")
+    except:
+        # Column might already exist, which is fine
+        pass
+
     # Create indexes for performance
-    execute_query("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
-    execute_query("CREATE INDEX IF NOT EXISTS idx_transactions_id_desc ON transactions(id DESC)")
-    execute_query("CREATE INDEX IF NOT EXISTS idx_salary_date ON salary_records(date)")
-    execute_query("CREATE INDEX IF NOT EXISTS idx_salary_employee ON salary_records(employee_name)")
+    # Note: MySQL doesn't support "CREATE INDEX IF NOT EXISTS" - create_index_safe()
+    # builds backend-appropriate SQL and tolerates "already exists" errors.
+    create_index_safe('idx_transactions_date', 'transactions', 'date')
+    create_index_safe('idx_transactions_id_desc', 'transactions', 'id DESC')
+    create_index_safe('idx_salary_date', 'salary_records', 'date')
+    create_index_safe('idx_salary_employee', 'salary_records', 'employee_name')
+    create_index_safe('idx_salary_transaction_id', 'salary_records', 'transaction_id')
     
     # Create settings table for dynamic employees and categories
     if USE_MYSQL:
@@ -512,19 +561,23 @@ def init_db():
             )
         print("Default settings seeded (employees, income/expense categories)")
     
-    # Create default owner user (username: admin, password: admin123)
-    # Password is hashed using PBKDF2-SHA256 with salt
-    default_password_hash = hash_password('admin123')
-    
-    # Check if default user exists
+    # Create default owner user on first run only.
+    # Password comes from ADMIN_PASSWORD env var if set, otherwise a random
+    # one is generated and printed ONCE so a hardcoded credential never ships.
     check_user_query = "SELECT id FROM users WHERE username = 'admin'"
     existing_user = execute_query(check_user_query, fetch=True, fetchone=True)
-    
+
     if not existing_user:
+        admin_password = os.environ.get('ADMIN_PASSWORD') or secrets.token_urlsafe(12)
+        default_password_hash = hash_password(admin_password)
         placeholder = '%s' if USE_MYSQL else '?'
         insert_user_query = f"INSERT INTO users (username, password_hash, role) VALUES ({placeholder}, {placeholder}, {placeholder})"
         execute_query(insert_user_query, ('admin', default_password_hash, 'owner'))
-        print("Default owner user created - Username: admin, Password: admin123, Role: owner")
+        if os.environ.get('ADMIN_PASSWORD'):
+            print("Default owner user created - Username: admin, Password: <from ADMIN_PASSWORD env var>, Role: owner")
+        else:
+            print(f"Default owner user created - Username: admin, Password: {admin_password}, Role: owner")
+            print("IMPORTANT: Save this password now - it will not be shown again. Change it after first login.")
     
     # Ensure all categories in settings table have corresponding columns in transactions table
     all_categories = execute_query(
@@ -568,10 +621,11 @@ def verify_password(stored_hash, provided_password):
 
 # Input validation helpers
 def validate_decimal(value, field_name, min_value=0):
-    """Validate decimal input"""
+    """Validate decimal input. Pass min_value=None to allow negative values
+    (e.g. a running cash balance that legitimately went into deficit)."""
     try:
         decimal_value = Decimal(str(value))
-        if decimal_value < min_value:
+        if min_value is not None and decimal_value < min_value:
             raise ValueError(f"{field_name} cannot be less than {min_value}")
         return float(decimal_value)
     except (InvalidOperation, ValueError, TypeError):
@@ -593,9 +647,6 @@ def validate_payment_method(method):
     return method
 
 # Shared constants and utilities
-def camel_to_snake(name):
-    return re.sub(r'([A-Z])', r'_\1', name).lower()
-
 # Will be populated on app startup
 KNOWN_INCOME_KEYS = []
 KNOWN_EXPENSE_KEYS = []
@@ -638,8 +689,11 @@ def build_transaction_columns_values(data, entry_date):
     for key in income_keys:
         cat_data = data.get('income', {}).get(key, {})
         if isinstance(cat_data, dict):
-            snake = camel_to_snake(key)
-            columns.extend([snake, f'{snake}_method', f'{snake}_comment'])
+            # Use key_id as-is - it must match the actual column name created by
+            # add_category_columns(), which never applies camel_to_snake. Transforming
+            # it here caused "Unknown column" errors for any multi-word category
+            # (e.g. key_id 'roomService' column vs a 'room_service' write target).
+            columns.extend([key, f'{key}_method', f'{key}_comment'])
             values_list.extend([cat_data.get('amount', 0), cat_data.get('method', ''), cat_data.get('comment', '')])
     
     columns.append('total_income')
@@ -656,8 +710,11 @@ def build_transaction_columns_values(data, entry_date):
     for key in expense_keys:
         cat_data = data.get('expense', {}).get(key, {})
         if isinstance(cat_data, dict):
-            snake = camel_to_snake(key)
-            columns.extend([snake, f'{snake}_method', f'{snake}_comment'])
+            # Use key_id as-is - it must match the actual column name created by
+            # add_category_columns(), which never applies camel_to_snake. Transforming
+            # it here caused "Unknown column" errors for any multi-word category
+            # (e.g. key_id 'roomService' column vs a 'room_service' write target).
+            columns.extend([key, f'{key}_method', f'{key}_comment'])
             values_list.extend([cat_data.get('amount', 0), cat_data.get('method', ''), cat_data.get('comment', '')])
     
     columns.extend(['total_expense', 'closing_balance'])
@@ -766,7 +823,7 @@ def save_transaction():
         
         # Validate opening balance
         try:
-            opening_balance = validate_decimal(data.get('openingBalance', 0), 'Opening balance')
+            opening_balance = validate_decimal(data.get('openingBalance', 0), 'Opening balance', min_value=None)
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
         
@@ -820,18 +877,21 @@ def save_transaction():
                         payment_type = 'Full'
                         print(f"DEBUG: Adjusted - type: {payment_type}, note: {note}")
                     
-                    # Insert into salary_records
-                    salary_query = f'''INSERT INTO salary_records 
-                        (date, employee_name, payment_type, amount, payment_method, note)
-                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
-                    
+                    # Insert into salary_records, linked to this transaction via
+                    # transaction_id so deleting one only affects records it created
+                    # (not every other salary_record/transaction sharing the same date)
+                    salary_query = f'''INSERT INTO salary_records
+                        (date, employee_name, payment_type, amount, payment_method, note, transaction_id)
+                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
+
                     salary_values = (
                         entry_date,
                         employee_name,
                         payment_type,
                         amount,
                         payment_method,
-                        note
+                        note,
+                        transaction_id
                     )
                     
                     execute_query(salary_query, salary_values)
@@ -866,6 +926,9 @@ def handle_transaction(transaction_id):
     
     if request.method == 'GET':
         try:
+            if 'user_id' not in session:
+                return jsonify({'error': 'Not authenticated'}), 401
+
             placeholder = '%s' if USE_MYSQL else '?'
             query = f'SELECT * FROM transactions WHERE id = {placeholder}'
             transaction = execute_query(query, (transaction_id,), fetch=True, fetchone=True)
@@ -887,7 +950,7 @@ def handle_transaction(transaction_id):
             
             # Validate opening balance
             try:
-                opening_balance = validate_decimal(data.get('openingBalance', 0), 'Opening balance')
+                opening_balance = validate_decimal(data.get('openingBalance', 0), 'Opening balance', min_value=None)
             except ValueError as e:
                 return jsonify({'error': str(e)}), 400
             
@@ -937,13 +1000,13 @@ def handle_transaction(transaction_id):
             if not transaction:
                 return jsonify({'error': 'Transaction not found'}), 404
             
-            # If this is a salary transaction (has salary amount), also delete salary_records
-            if transaction.get('salary') and transaction.get('salary') > 0:
-                # Delete all salary_records for this transaction date
-                execute_query(
-                    f'DELETE FROM salary_records WHERE DATE(date) = DATE({placeholder})',
-                    (transaction['date'],)
-                )
+            # Delete only the salary_records that were created alongside THIS
+            # transaction (linked by transaction_id), never by date alone -
+            # multiple transactions/salary records can share the same date.
+            execute_query(
+                f'DELETE FROM salary_records WHERE transaction_id = {placeholder}',
+                (transaction_id,)
+            )
             
             # Delete the transaction
             delete_query = f'DELETE FROM transactions WHERE id = {placeholder}'
@@ -1032,16 +1095,19 @@ def get_category_totals():
         
         # Get the list of actual columns in transactions table (for safety check)
         conn = get_db_connection()
-        if USE_MYSQL:
+        try:
             cursor = conn.cursor()
-            cursor.execute("DESCRIBE transactions")
-            columns = {row[0] for row in cursor.fetchall()}
-        else:
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(transactions)")
-            columns = {row[1] for row in cursor.fetchall()}
-        cursor.close()
-        conn.close()
+            try:
+                if USE_MYSQL:
+                    cursor.execute("DESCRIBE transactions")
+                    columns = {row[0] for row in cursor.fetchall()}
+                else:
+                    cursor.execute("PRAGMA table_info(transactions)")
+                    columns = {row[1] for row in cursor.fetchall()}
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
         
         income_totals = {}
         expense_totals = {}
@@ -1092,31 +1158,15 @@ def create_salary_records():
             return jsonify({'error': 'No records provided'}), 400
 
         placeholder = '%s' if USE_MYSQL else '?'
-        saved_count = 0
 
-        # Calculate totals by payment method for the transaction
+        # Calculate totals by payment method for the transaction (no inserts yet -
+        # the transaction is created first so salary_records can link to its id)
         total_salary = 0
         cash_salary = 0
         upi_salary = 0
         salary_comments = []
 
         for record in records:
-            query = f'''INSERT INTO salary_records 
-                (date, employee_name, payment_type, amount, payment_method, note)
-                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
-            
-            values = (
-                record['date'],
-                record['employeeName'],
-                record['paymentType'],
-                record['amount'],
-                record['paymentMethod'],
-                record.get('note', '')
-            )
-            
-            execute_query(query, values)
-            saved_count += 1
-            
             amount = float(record['amount'])
             total_salary += amount
             if record['paymentMethod'] == 'cash':
@@ -1133,18 +1183,38 @@ def create_salary_records():
         )
         opening_balance = float(last_tx['closing_balance']) if last_tx and last_tx['closing_balance'] is not None else 0
         closing_balance = opening_balance - total_salary
-        
+
         # Determine primary method (whichever has higher amount)
         salary_method = 'cash' if cash_salary >= upi_salary else 'upi'
         comment_str = ' | '.join(salary_comments)
-        
+
         # Insert transaction with salary expense
         tx_columns = ['date', 'opening_balance', 'salary', 'salary_method', 'salary_comment', 'total_income', 'total_expense', 'closing_balance']
         tx_values = [records[0]['date'], opening_balance, total_salary, salary_method, comment_str, 0, total_salary, closing_balance]
-        
+
         placeholders_str = ', '.join([placeholder] * len(tx_columns))
         columns_str = ', '.join(tx_columns)
-        execute_query(f'INSERT INTO transactions ({columns_str}) VALUES ({placeholders_str})', tuple(tx_values))
+        transaction_id = execute_query(f'INSERT INTO transactions ({columns_str}) VALUES ({placeholders_str})', tuple(tx_values))
+
+        # Now insert salary_records linked to the transaction that was just created
+        saved_count = 0
+        for record in records:
+            query = f'''INSERT INTO salary_records
+                (date, employee_name, payment_type, amount, payment_method, note, transaction_id)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
+
+            values = (
+                record['date'],
+                record['employeeName'],
+                record['paymentType'],
+                record['amount'],
+                record['paymentMethod'],
+                record.get('note', ''),
+                transaction_id
+            )
+
+            execute_query(query, values)
+            saved_count += 1
 
         return jsonify({'message': f'{saved_count} record(s) saved successfully', 'count': saved_count}), 200
     except Exception as e:
@@ -1154,6 +1224,9 @@ def create_salary_records():
 @app.route('/api/salary-records', methods=['GET'])
 def get_salary_records():
     try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+
         limit = request.args.get('limit', 100, type=int)
         
         placeholder = '%s' if USE_MYSQL else '?'
@@ -1193,6 +1266,9 @@ def get_all_salary_records():
 @app.route('/api/salary-records/details/<date>', methods=['GET'])
 def get_salary_records_by_date(date):
     try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+
         placeholder = '%s' if USE_MYSQL else '?'
         query = f'SELECT * FROM salary_records WHERE DATE(date) = DATE({placeholder}) ORDER BY employee_name'
         
@@ -1213,34 +1289,37 @@ def delete_salary_record(record_id):
             return jsonify({'error': 'Only owners can delete salary records'}), 403
 
         placeholder = '%s' if USE_MYSQL else '?'
-        
-        # Get the salary record to find its date
+
+        # Get the salary record to find which transaction (if any) it belongs to
         salary_record = execute_query(
-            f'SELECT date FROM salary_records WHERE id = {placeholder}',
+            f'SELECT transaction_id FROM salary_records WHERE id = {placeholder}',
             (record_id,), fetch=True, fetchone=True
         )
-        
+
         if not salary_record:
             return jsonify({'error': 'Salary record not found'}), 404
-        
+
+        linked_transaction_id = salary_record.get('transaction_id')
+
         # Delete the salary record
         delete_query = f'DELETE FROM salary_records WHERE id = {placeholder}'
         execute_query(delete_query, (record_id,))
-        
-        # Check if there are any remaining salary records for this date
-        salary_date = salary_record['date']
-        remaining_records = execute_query(
-            f'SELECT COUNT(*) as cnt FROM salary_records WHERE DATE(date) = DATE({placeholder})',
-            (salary_date,), fetch=True, fetchone=True
-        )
-        
-        # If no salary records remain for this date, delete the corresponding transaction
-        if remaining_records and remaining_records['cnt'] == 0:
-            execute_query(
-                f'DELETE FROM transactions WHERE DATE(date) = DATE({placeholder}) AND salary > 0',
-                (salary_date,)
+
+        # Only cascade to the transaction this record was actually created
+        # with (by transaction_id, never by date - other unrelated
+        # transactions/salary records can share the same date).
+        if linked_transaction_id:
+            remaining_records = execute_query(
+                f'SELECT COUNT(*) as cnt FROM salary_records WHERE transaction_id = {placeholder}',
+                (linked_transaction_id,), fetch=True, fetchone=True
             )
-        
+
+            if remaining_records and remaining_records['cnt'] == 0:
+                execute_query(
+                    f'DELETE FROM transactions WHERE id = {placeholder}',
+                    (linked_transaction_id,)
+                )
+
         return jsonify({'message': 'Salary record deleted successfully'}), 200
     except Exception as e:
         print(f"Error deleting salary record: {e}")
@@ -1285,15 +1364,37 @@ def add_setting():
         
         if setting_type not in ('employee', 'income_category', 'expense_category'):
             return jsonify({'error': 'Invalid type'}), 400
-        
+
+        # key_id ends up unescaped inside ALTER TABLE/SHOW COLUMNS statements
+        # (add_category_columns) since column names can't be parameterized -
+        # restrict it to a safe identifier shape to prevent SQL injection via DDL.
+        if not re.match(r'^[a-z][a-z0-9_]{0,49}$', key_id):
+            return jsonify({'error': 'key_id must start with a lowercase letter and contain only lowercase letters, numbers, and underscores (max 50 chars)'}), 400
+
         placeholder = '%s' if USE_MYSQL else '?'
-        
+
+        # income_category and expense_category both map to a column in the
+        # transactions table named after key_id - the column is NOT namespaced
+        # by type. The settings table's UNIQUE(type, key_id) constraint allows
+        # the same key_id for an income category and an expense category, but
+        # if that happened they would silently read/write the exact same
+        # column (entering an amount under one would show up under the other).
+        # Block that combination before it can happen.
+        if setting_type in ('income_category', 'expense_category'):
+            cross_type_conflict = execute_query(
+                f"SELECT type FROM settings WHERE key_id = {placeholder} AND type IN ('income_category', 'expense_category') AND type != {placeholder}",
+                (key_id, setting_type), fetch=True, fetchone=True
+            )
+            if cross_type_conflict:
+                other = cross_type_conflict['type'].replace('_category', '')
+                return jsonify({'error': f"key_id '{key_id}' is already used by an {other} category. Choose a name that doesn't collide with an existing income/expense category."}), 409
+
         # Check if a soft-deleted entry exists with same type and key_id
         existing = execute_query(
             f"SELECT id, active FROM settings WHERE type = {placeholder} AND key_id = {placeholder}",
             (setting_type, key_id), fetch=True, fetchone=True
         )
-        
+
         if existing:
             if existing['active'] == 1:
                 return jsonify({'error': 'This key_id already exists for this type'}), 409

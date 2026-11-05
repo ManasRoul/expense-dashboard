@@ -1,3 +1,10 @@
+// Escape untrusted text (labels, etc.) before inserting into innerHTML
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     if (localStorage.getItem('userRole') !== 'owner') {
         alert("You don't have the right access");
@@ -34,7 +41,7 @@ function renderList(type, items, containerId) {
         }
         return `
         <li>
-            <span><span class="item-label">${item.label}</span><span class="item-key">(${item.key_id})</span>${salaryDisplay}</span>
+            <span><span class="item-label">${escapeHtml(item.label)}</span><span class="item-key">(${escapeHtml(item.key_id)})</span>${salaryDisplay}</span>
             <span class="item-actions">
                 <button class="btn-edit" data-id="${item.id}" data-label="${item.label.replace(/"/g, '&quot;')}" data-salary="${item.salary_amount || 0}">✏️</button>
                 <button class="btn-del" data-id="${item.id}" data-label="${item.label.replace(/"/g, '&quot;')}">🗑️</button>
@@ -51,12 +58,14 @@ function renderList(type, items, containerId) {
 }
 
 function generateKeyId(label) {
-    // Convert "Room Rent" -> "roomRent", "Staff Fooding" -> "staffFooding"
+    // Convert "Room Rent" -> "room_rent", "Staff Fooding!!" -> "staff_fooding"
+    // Must stay snake_case: server.py creates the DB column using this value
+    // verbatim, and a camelCase key_id previously caused "Unknown column" errors
+    // when saving an amount (the write path expected snake_case).
     return label.trim()
-        .split(/\s+/)
-        .map((word, i) => i === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join('')
-        .replace(/[^a-zA-Z0-9]/g, '');
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
 }
 
 async function addItem(type) {
@@ -75,10 +84,17 @@ async function addItem(type) {
     let salary_amount = 0;
     if (type === 'employee') {
         const salaryInput = document.getElementById('newEmployeeSalary');
-        salary_amount = parseFloat(salaryInput.value) || 0;
-        if (salary_amount < 0) {
-            alert('Salary amount must be positive');
-            return;
+        const rawSalary = salaryInput.value.trim();
+        if (rawSalary !== '') {
+            salary_amount = parseFloat(rawSalary);
+            if (isNaN(salary_amount)) {
+                alert(`"${rawSalary}" is not a valid salary amount`);
+                return;
+            }
+            if (salary_amount < 0) {
+                alert('Salary amount must be positive');
+                return;
+            }
         }
     }
 
@@ -106,49 +122,45 @@ async function addItem(type) {
     }
 }
 
+// Parses a prompt()'d salary string. Returns null (and alerts) if invalid,
+// otherwise the validated number - never silently coerces bad input to 0.
+function parseSalaryPrompt(value) {
+    const trimmed = value.trim();
+    const amount = parseFloat(trimmed);
+    if (trimmed === '' || isNaN(amount)) {
+        alert(`"${value}" is not a valid number`);
+        return null;
+    }
+    if (amount < 0) {
+        alert('Salary amount must be positive');
+        return null;
+    }
+    return amount;
+}
+
 async function editItem(id, currentLabel, containerId, currentSalary) {
     const newLabel = prompt('Edit name:', currentLabel);
-    if (!newLabel || newLabel.trim() === currentLabel) {
-        // Check if salary was updated for employees
-        if (containerId === 'employeeList') {
-            const newSalary = prompt('Edit monthly salary (₹):', currentSalary);
-            if (newSalary === null) return;
-            
-            const salaryAmount = parseFloat(newSalary) || 0;
-            if (salaryAmount < 0) {
-                alert('Salary amount must be positive');
-                return;
-            }
-            
-            try {
-                const res = await fetch(`/api/settings/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ salary_amount: salaryAmount })
-                });
-                if (!res.ok) { alert('Error updating'); return; }
-                loadAllSettings();
-            } catch (e) {
-                alert('Error updating item');
-            }
-        }
-        return;
+    const labelChanged = newLabel !== null && newLabel.trim() !== '' && newLabel.trim() !== currentLabel;
+
+    let updateData = {};
+    if (labelChanged) {
+        updateData.label = newLabel.trim();
     }
 
-    // Also prompt for salary if this is an employee
-    let updateData = { label: newLabel.trim() };
     if (containerId === 'employeeList') {
         const newSalary = prompt('Edit monthly salary (₹):', currentSalary);
         if (newSalary !== null) {
-            const salaryAmount = parseFloat(newSalary) || 0;
-            if (salaryAmount < 0) {
-                alert('Salary amount must be positive');
-                return;
+            const salaryAmount = parseSalaryPrompt(newSalary);
+            if (salaryAmount === null) {
+                // Invalid salary shouldn't discard an already-valid label edit
+                if (!labelChanged) return;
+            } else {
+                updateData.salary_amount = salaryAmount;
             }
-            updateData.salary_amount = salaryAmount;
         }
     }
+
+    if (Object.keys(updateData).length === 0) return;
 
     try {
         const res = await fetch(`/api/settings/${id}`, {
