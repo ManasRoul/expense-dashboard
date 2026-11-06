@@ -22,6 +22,25 @@
         .filter-bar select { padding: 8px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+
+        .month-card-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+        @media (max-width: 900px) { .month-card-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 500px) { .month-card-grid { grid-template-columns: repeat(2, 1fr); } }
+        .month-card { perspective: 1000px; height: 100px; cursor: pointer; }
+        .month-card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.6s; transform-style: preserve-3d; }
+        .month-card.flipped .month-card-inner { transform: rotateY(180deg); }
+        .month-card-front, .month-card-back { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; text-align: center; }
+        .month-card-front { background: linear-gradient(135deg, #3b82f6, #6366f1); color: white; }
+        .month-card-front .month-name { font-size: 14px; font-weight: 700; }
+        .month-card-front .flip-hint { font-size: 9px; opacity: 0.85; margin-top: 4px; }
+        .month-card-back { background: white; border: 2px solid #e2e8f0; transform: rotateY(180deg); gap: 2px; padding: 8px; }
+        .month-card-back .row { display: flex; justify-content: space-between; width: 100%; font-size: 10px; gap: 4px; }
+        .month-card-back .row .label { color: #64748b; }
+        .month-card-back .row .value { white-space: nowrap; }
+        .month-card-back .row.income .value { color: #10b981; font-weight: 700; }
+        .month-card-back .row.expense .value { color: #ef4444; font-weight: 700; }
+        .month-card-back .row.available { border-top: 1px solid #e2e8f0; margin-top: 2px; padding-top: 3px; }
+        .month-card-back .row.available .value { color: #1e293b; font-weight: 700; font-size: 11px; }
     </style>
 </head>
 <body>
@@ -41,6 +60,10 @@
 
             <!-- Monthly Tab -->
             <div id="tab-monthly" class="tab-content active">
+                <div class="chart-card">
+                    <h2>🗓️ Monthly Summary <span style="font-size:13px; font-weight:400; color:#64748b;"></span></h2>
+                    <div class="month-card-grid" id="monthlySummaryCards"></div>
+                </div>
                 <div class="filter-bar">
                     <label>📅 Month:</label>
                     <select id="monthFilter" onchange="renderMonthlyTab()"></select>
@@ -67,6 +90,10 @@
 
             <!-- Yearly Tab -->
             <div id="tab-yearly" class="tab-content">
+                <div class="chart-card">
+                    <h2>🗓️ Yearly Summary</h2>
+                    <div class="month-card-grid" id="yearlySummaryCards"></div>
+                </div>
                 <div class="chart-card">
                     <h2>📊 Yearly Income vs Expense</h2>
                     <canvas id="yearMonthlyChart"></canvas>

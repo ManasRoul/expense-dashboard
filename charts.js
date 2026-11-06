@@ -71,6 +71,8 @@ function switchTab(tab) {
 
 // --- MONTHLY TAB ---
 function renderMonthlyTab() {
+    renderMonthlySummaryTable();
+
     const month = document.getElementById('monthFilter').value;
     const filtered = allTransactions.filter(t => {
         // Extract just the date part (YYYY-MM-DD) if time is included
@@ -121,7 +123,75 @@ function renderYearlyTab() {
     // Yearly balance trend
     charts.yearBalance = lineChart('yearBalanceChart', years, years.map(y => yearlyData[y].lastBalance), 'Closing Balance', '#3b82f6');
 
+    renderYearlySummaryCards(yearlyData, years);
     renderYearDoughnuts();
+}
+
+function renderYearlySummaryCards(yearlyData, years) {
+    const container = document.getElementById('yearlySummaryCards');
+    container.innerHTML = years.map(y => {
+        const d = yearlyData[y];
+        const available = d.income - d.expense;
+        return `<div class="month-card" onclick="this.classList.toggle('flipped')">
+            <div class="month-card-inner">
+                <div class="month-card-front" style="background: ${monthGradient(y)}">
+                    <div class="month-name">${y}</div>
+                    <div class="flip-hint">tap to view details</div>
+                </div>
+                <div class="month-card-back">
+                    <div class="row income"><span class="label">Income</span><span class="value">₹${d.income.toFixed(2)}</span></div>
+                    <div class="row expense"><span class="label">Expense</span><span class="value">₹${d.expense.toFixed(2)}</span></div>
+                    <div class="row available"><span class="label">Available</span><span class="value">₹${available.toFixed(2)}</span></div>
+                </div>
+            </div>
+        </div>`;
+    }).join('') || '<p class="loading-message">No data available</p>';
+}
+
+// --- MONTHLY SUMMARY CARDS ---
+const MONTH_CARD_GRADIENTS = [
+    ['#3b82f6', '#6366f1'], ['#10b981', '#059669'], ['#f59e0b', '#ea580c'],
+    ['#ec4899', '#db2777'], ['#8b5cf6', '#7c3aed'], ['#06b6d4', '#0891b2'],
+    ['#ef4444', '#dc2626'], ['#14b8a6', '#0d9488'], ['#f43f5e', '#e11d48'],
+    ['#84cc16', '#65a30d'], ['#6366f1', '#4f46e5'], ['#eab308', '#ca8a04']
+];
+function monthGradient(ym) {
+    let hash = 0;
+    for (let i = 0; i < ym.length; i++) hash = (hash * 31 + ym.charCodeAt(i)) >>> 0;
+    const [a, b] = MONTH_CARD_GRADIENTS[hash % MONTH_CARD_GRADIENTS.length];
+    return `linear-gradient(135deg, ${a}, ${b})`;
+}
+
+function renderMonthlySummaryTable() {
+    const monthlyData = {};
+    allTransactions.forEach(t => {
+        const dateOnly = t.date.split(' ')[0];
+        const ym = dateOnly.slice(0, 7); // YYYY-MM
+        if (!monthlyData[ym]) monthlyData[ym] = { income: 0, expense: 0 };
+        monthlyData[ym].income += parseFloat(t.total_income) || 0;
+        monthlyData[ym].expense += parseFloat(t.total_expense) || 0;
+    });
+
+    const months = Object.keys(monthlyData).sort(); // chronological order so back-dated months land in their correct slot
+    const container = document.getElementById('monthlySummaryCards');
+    container.innerHTML = months.map(ym => {
+        const [y, mo] = ym.split('-');
+        const d = monthlyData[ym];
+        const available = d.income - d.expense;
+        return `<div class="month-card" onclick="this.classList.toggle('flipped')">
+            <div class="month-card-inner">
+                <div class="month-card-front" style="background: ${monthGradient(ym)}">
+                    <div class="month-name">${MONTHS[parseInt(mo) - 1]} ${y}</div>
+                    <div class="flip-hint">tap to view details</div>
+                </div>
+                <div class="month-card-back">
+                    <div class="row income"><span class="label">Income</span><span class="value">₹${d.income.toFixed(2)}</span></div>
+                    <div class="row expense"><span class="label">Expense</span><span class="value">₹${d.expense.toFixed(2)}</span></div>
+                    <div class="row available"><span class="label">Available</span><span class="value">₹${available.toFixed(2)}</span></div>
+                </div>
+            </div>
+        </div>`;
+    }).join('') || '<p class="loading-message">No data available</p>';
 }
 
 function renderYearDoughnuts() {
