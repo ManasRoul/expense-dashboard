@@ -10,6 +10,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Filter rendered category cards by search text (client-side, no reload needed)
+function filterCategoryCards() {
+    const term = document.getElementById('categorySearch').value.trim().toLowerCase();
+    document.querySelectorAll('.category-card').forEach(card => {
+        const name = card.querySelector('.category-name')?.textContent.toLowerCase() || '';
+        card.style.display = !term || name.includes(term) ? '' : 'none';
+    });
+}
+
 // Load category metadata (labels, icons) from settings
 async function loadCategoryMetadata() {
     try {
@@ -62,7 +71,7 @@ async function loadCategoryData() {
         const data = await response.json();
 
         // Also load all transactions for details view
-        const transactionsResponse = await fetch('/api/transactions', {
+        const transactionsResponse = await fetch('/api/transactions?limit=all', {
             credentials: 'include'
         });
         
@@ -171,6 +180,9 @@ async function loadCategoryData() {
         // Update summary totals
         document.getElementById('totalIncome').textContent = `₹${totalIncome.toFixed(2)}`;
         document.getElementById('totalExpense').textContent = `₹${totalExpense.toFixed(2)}`;
+
+        // Re-apply any active search filter to the freshly rendered cards
+        filterCategoryCards();
 
     } catch (error) {
         console.error('Error loading category data:', error);

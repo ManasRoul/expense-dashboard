@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark-mode');</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home - Financial Dashboard</title>
     <link rel="stylesheet" href="home.css">
+    <link rel="stylesheet" href="dark-mode.css">
 </head>
 <body>
     <nav class="navbar">
@@ -15,6 +17,7 @@
             </div>
             <div class="nav-user">
                 <span class="welcome-text">Welcome, <strong id="username">User</strong></span>
+                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" style="color:#334155;">🌙 Dark</button>
                 <button class="btn-logout" onclick="logout()">Logout 🚪</button>
             </div>
         </div>
@@ -110,5 +113,16 @@
     </div>
 
     <script src="home.js"></script>
+    <script>
+        // home.html doesn't include auth.js, so the toggle logic is duplicated here
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            document.getElementById('themeToggleBtn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
+        }
+        if (document.documentElement.classList.contains('dark-mode')) {
+            document.getElementById('themeToggleBtn').textContent = '☀️ Light';
+        }
+    </script>
 </body>
 </html>

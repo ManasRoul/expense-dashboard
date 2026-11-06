@@ -29,7 +29,7 @@ async function loadCategoryKeys() {
 document.addEventListener('DOMContentLoaded', async function() {
     await loadCategoryKeys();
     
-    const res = await fetch('/api/transactions', { credentials: 'include' });
+    const res = await fetch('/api/transactions?limit=all', { credentials: 'include' });
     allTransactions = await res.json();
     allTransactions.sort((a, b) => a.date.localeCompare(b.date));
 

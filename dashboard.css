@@ -97,6 +97,44 @@ body {
     font-size: 1.1em;
 }
 
+.alert-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    padding: 16px 20px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.alert-banner.alert-danger {
+    background: #fef2f2;
+    border-left: 5px solid #ef4444;
+    color: #991b1b;
+}
+
+.alert-banner.alert-warning {
+    background: #fffbeb;
+    border-left: 5px solid #f59e0b;
+    color: #92400e;
+}
+
+.alert-banner-close {
+    background: none;
+    border: none;
+    font-size: 1.3em;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.7;
+    line-height: 1;
+}
+
+.alert-banner-close:hover {
+    opacity: 1;
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -183,6 +221,68 @@ body {
     border-radius: 12px;
     padding: 30px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.month-comparison-card {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.month-comparison-card h2 {
+    color: #1e40af;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+}
+
+.month-comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+}
+
+.month-comparison-col {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 18px 20px;
+}
+
+.month-comparison-label {
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 12px;
+    font-size: 1.05em;
+}
+
+.month-comparison-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 0.95em;
+    color: #475569;
+}
+
+.month-comparison-row.total {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 6px;
+    padding-top: 10px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.month-comparison-change {
+    margin-top: 18px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.95em;
+}
+
+@media (max-width: 768px) {
+    .month-comparison-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .transactions-section h2 {
@@ -291,6 +391,51 @@ tbody tr:hover {
 .positive {
     color: #10b981;
     font-weight: 600;
+}
+
+/* Undo toast */
+.undo-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: white;
+    padding: 14px 20px;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    z-index: 2000;
+    font-size: 0.95em;
+}
+
+.undo-toast-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.undo-toast-btn:hover {
+    background: #2563eb;
+}
+
+.undo-toast-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.2em;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.undo-toast-close:hover {
+    color: white;
 }
 
 .negative {

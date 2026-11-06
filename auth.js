@@ -1,3 +1,11 @@
+// Dark mode toggle - global so it can be called from inline onclick handlers
+function toggleTheme() {
+    const isDark = document.documentElement.classList.toggle('dark-mode');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) btn.textContent = isDark ? '☀️ Light' : '🌙 Dark';
+}
+
 // Authentication check - include this in all protected pages
 (function() {
     // Check if user is logged in
@@ -37,6 +45,7 @@
                     <span class="auth-user-text">Welcome, <strong>${username}</strong> <span class="role-badge">(${roleDisplay})</span></span>
                 </div>
                 <div class="auth-buttons">
+                    <button class="btn-home-top" id="themeToggleBtn" onclick="toggleTheme()">${document.documentElement.classList.contains('dark-mode') ? '☀️ Light' : '🌙 Dark'}</button>
                     <a href="home.html" class="btn-home-top">🏠 Home</a>
                     ${userRole === 'owner' ? '<a href="settings.html" class="btn-home-top">⚙️ Settings</a>' : ''}
                     <button class="btn-logout-top" id="authLogoutBtn">🚪 Logout</button>

@@ -1,0 +1,151 @@
+/* Dark mode overrides. Scoped under html.dark-mode so none of the existing
+   light-mode stylesheets need to change - this file just wins on cascade order
+   since it's loaded after them on every page. */
+
+html.dark-mode body {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    color: #e2e8f0;
+}
+
+/* Card / panel / container backgrounds used across every page */
+html.dark-mode .dashboard-header,
+html.dark-mode .stat-card,
+html.dark-mode .chart-card,
+html.dark-mode .transactions-section,
+html.dark-mode .settings-section,
+html.dark-mode .modal-content,
+html.dark-mode .audit-card,
+html.dark-mode .category-card,
+html.dark-mode .employee-section,
+html.dark-mode .month-summary,
+html.dark-mode .month-card-back,
+html.dark-mode #salaryForm,
+html.dark-mode .records-section,
+html.dark-mode .filter-bar,
+html.dark-mode .view-mode-bar,
+html.dark-mode .category-search-bar,
+html.dark-mode .container,
+html.dark-mode .section,
+html.dark-mode .login-card,
+html.dark-mode .feature-card,
+html.dark-mode .navbar,
+html.dark-mode .summary-card,
+html.dark-mode .month-stat-item,
+html.dark-mode .payment-record,
+html.dark-mode .salary-info-box {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-color: #334155;
+}
+
+html.dark-mode .month-card-front {
+    filter: brightness(0.85);
+}
+
+/* Headings and labels that default to blue/dark-slate text */
+html.dark-mode .dashboard-header h1,
+html.dark-mode .transactions-section h2,
+html.dark-mode .settings-section h2,
+html.dark-mode .detail-section h3,
+html.dark-mode .section h2,
+html.dark-mode .form-section h3,
+html.dark-mode .page-header h1,
+html.dark-mode h1, html.dark-mode h2, html.dark-mode h3 {
+    color: #f1f5f9;
+}
+
+html.dark-mode p,
+html.dark-mode span,
+html.dark-mode label,
+html.dark-mode td,
+html.dark-mode .item-label,
+html.dark-mode .category-name {
+    color: #cbd5e1;
+}
+
+/* Tables */
+html.dark-mode table,
+html.dark-mode thead,
+html.dark-mode .detail-table thead {
+    background: transparent;
+}
+
+html.dark-mode thead th,
+html.dark-mode .detail-table th {
+    background: #0f172a;
+    color: #cbd5e1;
+    border-bottom-color: #334155;
+}
+
+html.dark-mode tbody td,
+html.dark-mode .detail-table td {
+    border-bottom-color: #334155;
+    color: #e2e8f0;
+}
+
+html.dark-mode tbody tr:hover,
+html.dark-mode .detail-table tbody tr:hover {
+    background: #263548;
+}
+
+/* Form inputs */
+html.dark-mode input,
+html.dark-mode select,
+html.dark-mode textarea {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #334155;
+}
+
+html.dark-mode input::placeholder,
+html.dark-mode textarea::placeholder {
+    color: #64748b;
+}
+
+html.dark-mode input[readonly] {
+    background: #1e293b;
+}
+
+/* Modals */
+html.dark-mode .modal-body,
+html.dark-mode .modal-footer {
+    background: #1e293b;
+    color: #e2e8f0;
+}
+
+html.dark-mode .detail-total,
+html.dark-mode .month-comparison-col,
+html.dark-mode .summary-card,
+html.dark-mode .format-card {
+    background: #0f172a;
+}
+
+/* Login page */
+html.dark-mode .login-container {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+/* Home page nav + feature cards */
+html.dark-mode .welcome-text,
+html.dark-mode .brand-name {
+    color: #e2e8f0;
+}
+
+/* Misc borders that default to light gray */
+html.dark-mode .employee-header,
+html.dark-mode .payment-summary .summary-card,
+html.dark-mode .month-summary-header {
+    border-color: #334155;
+}
+
+/* Toggle button itself */
+.theme-toggle-btn {
+    background: none;
+    border: 2px solid currentColor;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: inherit;
+}

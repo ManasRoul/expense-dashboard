@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark-mode');</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Income/Receipt Form</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="dark-mode.css">
     <style>
         .category-section {
             margin-bottom: 20px;
@@ -241,6 +243,14 @@
                 <h2>4. Closing Balance (₹)</h2>
                 <div class="form-group total">
                     <input type="number" id="closingBalance" name="closingBalance" step="0.01" readonly>
+                </div>
+            </div>
+
+            <!-- Receipt Attachment Section -->
+            <div class="section" id="receiptUploadSection" style="display:none;">
+                <h2>📎 Receipt / Photo (optional)</h2>
+                <div class="form-group">
+                    <input type="file" id="receiptFile" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple>
                 </div>
             </div>
 

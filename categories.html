@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark-mode');</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Category-wise Dashboard</title>
     <link rel="stylesheet" href="categories.css">
+    <link rel="stylesheet" href="dark-mode.css">
 </head>
 <body>
     <div class="dashboard-container">
@@ -34,6 +36,11 @@
                     <div class="summary-amount" id="totalExpense">₹0.00</div>
                 </div>
             </div>
+        </div>
+
+        <!-- Category Search -->
+        <div class="category-search-bar">
+            <input type="text" id="categorySearch" placeholder="🔍 Search categories (e.g. electricity, rent)..." oninput="filterCategoryCards()">
         </div>
 
         <!-- Income Categories Section -->

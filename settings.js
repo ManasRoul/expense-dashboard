@@ -14,6 +14,14 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAllSettings();
 });
 
+let lowBalanceThresholdId = null;
+
+const FEATURE_FLAGS = [
+    { key_id: 'feature_created_by_tracking', label: 'Track who created/edited transactions' },
+    { key_id: 'feature_audit_log', label: 'Audit Log Page' },
+    { key_id: 'feature_receipts', label: 'Receipt Attachments' }
+];
+
 async function loadAllSettings() {
     try {
         const res = await fetch('/api/settings', { credentials: 'include' });
@@ -23,8 +31,93 @@ async function loadAllSettings() {
         renderList('employee', items.filter(i => i.type === 'employee'), 'employeeList');
         renderList('income_category', items.filter(i => i.type === 'income_category'), 'incomeCategoryList');
         renderList('expense_category', items.filter(i => i.type === 'expense_category'), 'expenseCategoryList');
+
+        const thresholdSetting = items.find(i => i.type === 'app_config' && i.key_id === 'low_balance_threshold');
+        if (thresholdSetting) {
+            lowBalanceThresholdId = thresholdSetting.id;
+            document.getElementById('lowBalanceThreshold').value = thresholdSetting.salary_amount;
+        }
+
+        renderFeatureToggles(items.filter(i => i.type === 'app_config'));
     } catch (e) {
         console.error(e);
+    }
+}
+
+function renderFeatureToggles(appConfigItems) {
+    const ul = document.getElementById('featureTogglesList');
+    ul.innerHTML = FEATURE_FLAGS.map(flag => {
+        const item = appConfigItems.find(i => i.key_id === flag.key_id);
+        const enabled = item ? Number(item.salary_amount) !== 0 : true;
+        return `
+        <li>
+            <span class="item-label">${escapeHtml(flag.label)}</span>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" data-id="${item ? item.id : ''}" data-key="${flag.key_id}" ${enabled ? 'checked' : ''} onchange="toggleFeatureFlag(this)">
+                ${enabled ? 'On' : 'Off'}
+            </label>
+        </li>`;
+    }).join('');
+
+    const auditLogItem = appConfigItems.find(i => i.key_id === 'feature_audit_log');
+    const auditLogEnabled = auditLogItem ? Number(auditLogItem.salary_amount) !== 0 : true;
+    document.getElementById('auditLogLink').style.display = auditLogEnabled ? '' : 'none';
+}
+
+async function toggleFeatureFlag(checkbox) {
+    const id = checkbox.dataset.id;
+    if (!id) {
+        alert('This feature flag was not found in settings yet. Please refresh and try again.');
+        checkbox.checked = !checkbox.checked;
+        return;
+    }
+    try {
+        const res = await fetch(`/api/settings/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ salary_amount: checkbox.checked ? 1 : 0 })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Failed to update feature');
+            checkbox.checked = !checkbox.checked;
+            return;
+        }
+        await loadAllSettings();
+    } catch (e) {
+        console.error(e);
+        alert('Error updating feature');
+        checkbox.checked = !checkbox.checked;
+    }
+}
+
+async function saveLowBalanceThreshold() {
+    const value = parseFloat(document.getElementById('lowBalanceThreshold').value);
+    if (isNaN(value) || value < 0) {
+        alert('Please enter a valid non-negative amount');
+        return;
+    }
+    if (!lowBalanceThresholdId) {
+        alert('Threshold setting not loaded yet, please refresh and try again');
+        return;
+    }
+    try {
+        const res = await fetch(`/api/settings/${lowBalanceThresholdId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ salary_amount: value })
+        });
+        if (res.ok) {
+            alert('Low balance threshold saved!');
+        } else {
+            const data = await res.json();
+            alert(data.error || 'Failed to save threshold');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error saving threshold');
     }
 }
 

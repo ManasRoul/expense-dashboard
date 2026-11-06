@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import sqlite3
 import re
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ import os
 import hashlib
 import secrets
 import json
+import uuid
 from decimal import Decimal, InvalidOperation
 try:
     from flask_limiter import Limiter
@@ -57,9 +59,16 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB cap on request bodies (receipt uploads)
 
 # Session timeout (30 minutes of inactivity)
 SESSION_TIMEOUT = 1800  # seconds
+
+# Receipt uploads - stored outside the generic static-file route (see serve_static)
+# and only ever served through the authenticated /api/transactions/<id>/receipt route.
+RECEIPTS_DIR = os.path.join('uploads', 'receipts')
+os.makedirs(RECEIPTS_DIR, exist_ok=True)
+ALLOWED_RECEIPT_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.pdf'}
 
 # Configure CORS - allow from environment or default to localhost
 ALLOWED_ORIGINS = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:5000').split(',')
@@ -415,7 +424,38 @@ def init_db():
         )'''
     
     execute_query(create_table_query)
-    
+
+    # Add deleted_at column to transactions for soft-delete, if it doesn't exist
+    try:
+        if USE_MYSQL:
+            execute_query("ALTER TABLE transactions ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL")
+        else:
+            execute_query("ALTER TABLE transactions ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL")
+    except:
+        # Column might already exist, which is fine
+        pass
+
+    # Add created_by/updated_by columns to transactions, if they don't exist
+    for col in ('created_by', 'updated_by'):
+        try:
+            if USE_MYSQL:
+                execute_query(f"ALTER TABLE transactions ADD COLUMN {col} VARCHAR(50) DEFAULT NULL")
+            else:
+                execute_query(f"ALTER TABLE transactions ADD COLUMN {col} TEXT DEFAULT NULL")
+        except:
+            # Column might already exist, which is fine
+            pass
+
+    # Add receipt_path column to transactions, if it doesn't exist
+    try:
+        if USE_MYSQL:
+            execute_query("ALTER TABLE transactions ADD COLUMN receipt_path VARCHAR(255) DEFAULT NULL")
+        else:
+            execute_query("ALTER TABLE transactions ADD COLUMN receipt_path TEXT DEFAULT NULL")
+    except:
+        # Column might already exist, which is fine
+        pass
+
     # Create users table
     if USE_MYSQL:
         users_table_query = '''CREATE TABLE IF NOT EXISTS users (
@@ -474,6 +514,60 @@ def init_db():
         # Column might already exist, which is fine
         pass
 
+    # Add deleted_at column to salary_records for soft-delete, if it doesn't exist
+    # (mirrors a soft-deleted transaction so restoring one restores the other)
+    try:
+        if USE_MYSQL:
+            execute_query("ALTER TABLE salary_records ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL")
+        else:
+            execute_query("ALTER TABLE salary_records ADD COLUMN deleted_at TIMESTAMP DEFAULT NULL")
+    except:
+        # Column might already exist, which is fine
+        pass
+
+    # Create transaction_receipts table (supports multiple receipts per transaction).
+    # Individual receipts are hard-deleted on removal (no trash) - unlike a transaction,
+    # losing one is low-stakes since it's just a re-upload.
+    if USE_MYSQL:
+        receipts_table_query = '''CREATE TABLE IF NOT EXISTS transaction_receipts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            transaction_id INT NOT NULL,
+            filename VARCHAR(255) NOT NULL,
+            original_filename VARCHAR(255) DEFAULT NULL,
+            uploaded_by VARCHAR(50) DEFAULT NULL,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )'''
+    else:
+        receipts_table_query = '''CREATE TABLE IF NOT EXISTS transaction_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_filename TEXT DEFAULT NULL,
+            uploaded_by TEXT DEFAULT NULL,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )'''
+    execute_query(receipts_table_query)
+
+    # One-time, idempotent migration: move any existing single-receipt data
+    # (transactions.receipt_path, from before multi-receipt support) into the
+    # new table. Safe to run on every startup - skips filenames already migrated.
+    placeholder = '%s' if USE_MYSQL else '?'
+    legacy_receipts = execute_query(
+        "SELECT id, receipt_path FROM transactions WHERE receipt_path IS NOT NULL",
+        fetch=True
+    )
+    for row in (legacy_receipts or []):
+        already_migrated = execute_query(
+            f"SELECT id FROM transaction_receipts WHERE transaction_id = {placeholder} AND filename = {placeholder}",
+            (row['id'], row['receipt_path']), fetch=True, fetchone=True
+        )
+        if not already_migrated:
+            execute_query(
+                f"INSERT INTO transaction_receipts (transaction_id, filename) VALUES ({placeholder}, {placeholder})",
+                (row['id'], row['receipt_path'])
+            )
+            print(f"Migrated legacy receipt for transaction {row['id']} to transaction_receipts")
+
     # Create indexes for performance
     # Note: MySQL doesn't support "CREATE INDEX IF NOT EXISTS" - create_index_safe()
     # builds backend-appropriate SQL and tolerates "already exists" errors.
@@ -482,6 +576,7 @@ def init_db():
     create_index_safe('idx_salary_date', 'salary_records', 'date')
     create_index_safe('idx_salary_employee', 'salary_records', 'employee_name')
     create_index_safe('idx_salary_transaction_id', 'salary_records', 'transaction_id')
+    create_index_safe('idx_receipts_transaction_id', 'transaction_receipts', 'transaction_id')
     
     # Create settings table for dynamic employees and categories
     if USE_MYSQL:
@@ -560,7 +655,30 @@ def init_db():
                 item
             )
         print("Default settings seeded (employees, income/expense categories)")
-    
+
+    # Seed app_config rows (alert threshold + feature toggles) if missing. Runs on
+    # every startup (independent of the "settings empty" bulk-seed above) so it's
+    # added for existing databases too. Numeric/flag values are stored in the
+    # existing salary_amount column (a generic DECIMAL field) to avoid a schema change.
+    placeholder = '%s' if USE_MYSQL else '?'
+    app_config_defaults = [
+        ('low_balance_threshold', 'Low Balance Alert Threshold', '⚠️', 5000),
+        ('feature_created_by_tracking', 'Track who created/edited transactions', '🧩', 1),
+        ('feature_audit_log', 'Audit Log Page', '🧩', 1),
+        ('feature_receipts', 'Receipt Attachments', '🧩', 1),
+    ]
+    for key_id, label, icon, default_value in app_config_defaults:
+        existing_config = execute_query(
+            f"SELECT id FROM settings WHERE type = {placeholder} AND key_id = {placeholder}",
+            ('app_config', key_id), fetch=True, fetchone=True
+        )
+        if not existing_config:
+            execute_query(
+                f"INSERT INTO settings (type, key_id, label, icon, sort_order, salary_amount) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                ('app_config', key_id, label, icon, 0, default_value)
+            )
+            print(f"Seeded default app_config: {key_id} = {default_value}")
+
     # Create default owner user on first run only.
     # Password comes from ADMIN_PASSWORD env var if set, otherwise a random
     # one is generated and printed ONCE so a hardcoded credential never ships.
@@ -609,6 +727,17 @@ def audit_log(action, success=True, details=None):
             f.write(json.dumps(log_entry) + '\n')
     except Exception as e:
         print(f"Error writing audit log: {e}")
+
+def is_feature_enabled(key_id):
+    """Check an app_config feature flag stored in the settings table (salary_amount column holds 1/0)."""
+    placeholder = '%s' if USE_MYSQL else '?'
+    row = execute_query(
+        f"SELECT salary_amount FROM settings WHERE type = {placeholder} AND key_id = {placeholder}",
+        ('app_config', key_id), fetch=True, fetchone=True
+    )
+    if not row or row.get('salary_amount') is None:
+        return True  # default to enabled if the flag row is missing for some reason
+    return float(row['salary_amount']) != 0
 
 # Helper function to hash passwords with salt
 def hash_password(password):
@@ -839,10 +968,12 @@ def save_transaction():
         placeholder = '%s' if USE_MYSQL else '?'
         
         columns, values_list = build_transaction_columns_values(data, entry_date)
-        
+        columns.append('created_by')
+        values_list.append(session.get('username'))
+
         placeholders_str = ', '.join([placeholder] * len(columns))
         columns_str = ', '.join(columns)
-        
+
         query = f'INSERT INTO transactions ({columns_str}) VALUES ({placeholders_str})'
         
         transaction_id = execute_query(query, tuple(values_list))
@@ -907,13 +1038,20 @@ def get_transactions():
         if 'user_id' not in session:
             return jsonify({'error': 'Not authenticated'}), 401
         
-        # Get limit from query parameter, default to 50
-        limit = request.args.get('limit', 50, type=int)
-        
+        # Get limit from query parameter, default to 50. limit=all returns every row.
+        raw_limit = request.args.get('limit', '50')
         placeholder = '%s' if USE_MYSQL else '?'
-        query = f'SELECT * FROM transactions ORDER BY id DESC LIMIT {placeholder}'
-        
-        transactions = execute_query(query, (limit,), fetch=True)
+
+        if raw_limit == 'all':
+            query = 'SELECT * FROM transactions WHERE deleted_at IS NULL ORDER BY id DESC'
+            transactions = execute_query(query, fetch=True)
+        else:
+            try:
+                limit = int(raw_limit)
+            except ValueError:
+                limit = 50
+            query = f'SELECT * FROM transactions WHERE deleted_at IS NULL ORDER BY id DESC LIMIT {placeholder}'
+            transactions = execute_query(query, (limit,), fetch=True)
         
         return jsonify(transactions), 200
     except Exception as e:
@@ -966,7 +1104,9 @@ def handle_transaction(transaction_id):
             
             # Known columns in the database
             columns, values_list = build_transaction_columns_values(data, entry_date)
-            
+            columns.append('updated_by')
+            values_list.append(session.get('username'))
+
             set_parts = [f'{col} = {placeholder}' for col in columns]
             values_list.append(transaction_id)
             
@@ -990,34 +1130,245 @@ def handle_transaction(transaction_id):
                 audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'reason': 'Insufficient permissions', 'role': session.get('role')})
                 return jsonify({'error': 'Only owners can delete transactions'}), 403
             
-            # Get the transaction to check if it has salary data
+            # Get the transaction to check it exists and isn't already trashed
             placeholder = '%s' if USE_MYSQL else '?'
             transaction = execute_query(
-                f'SELECT * FROM transactions WHERE id = {placeholder}',
+                f'SELECT * FROM transactions WHERE id = {placeholder} AND deleted_at IS NULL',
                 (transaction_id,), fetch=True, fetchone=True
             )
-            
+
             if not transaction:
                 return jsonify({'error': 'Transaction not found'}), 404
-            
-            # Delete only the salary_records that were created alongside THIS
-            # transaction (linked by transaction_id), never by date alone -
-            # multiple transactions/salary records can share the same date.
+
+            # Soft-delete: mark deleted_at instead of removing the row, so the
+            # transaction (and any salary_records created alongside it, linked
+            # by transaction_id) can be restored later from the trash.
             execute_query(
-                f'DELETE FROM salary_records WHERE transaction_id = {placeholder}',
+                f'UPDATE salary_records SET deleted_at = CURRENT_TIMESTAMP WHERE transaction_id = {placeholder}',
                 (transaction_id,)
             )
-            
-            # Delete the transaction
-            delete_query = f'DELETE FROM transactions WHERE id = {placeholder}'
-            execute_query(delete_query, (transaction_id,))
-            
+            execute_query(
+                f'UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = {placeholder}',
+                (transaction_id,)
+            )
+
             audit_log('DELETE_TRANSACTION', success=True, details={'transaction_id': transaction_id})
-            return jsonify({'message': 'Transaction deleted successfully'}), 200
+            return jsonify({'message': 'Transaction moved to trash'}), 200
         except Exception as e:
             print(f"Error deleting transaction: {e}")
             audit_log('DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'error': str(e)})
             return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/receipts', methods=['POST'])
+def upload_receipts(transaction_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if not is_feature_enabled('feature_receipts'):
+            return jsonify({'error': 'Receipt attachments are disabled'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        transaction = execute_query(
+            f'SELECT id FROM transactions WHERE id = {placeholder} AND deleted_at IS NULL',
+            (transaction_id,), fetch=True, fetchone=True
+        )
+        if not transaction:
+            return jsonify({'error': 'Transaction not found'}), 404
+
+        files = request.files.getlist('receipts')
+        if not files or all(not f.filename for f in files):
+            return jsonify({'error': 'No files provided'}), 400
+
+        saved = 0
+        errors = []
+        for file in files:
+            if not file.filename:
+                continue
+            original_name = secure_filename(file.filename)
+            ext = os.path.splitext(original_name)[1].lower()
+            if ext not in ALLOWED_RECEIPT_EXTENSIONS:
+                errors.append(f'{original_name}: unsupported file type')
+                continue
+
+            filename = f"{transaction_id}_{uuid.uuid4().hex}{ext}"
+            file.save(os.path.join(RECEIPTS_DIR, filename))
+
+            execute_query(
+                f'INSERT INTO transaction_receipts (transaction_id, filename, original_filename, uploaded_by) '
+                f'VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})',
+                (transaction_id, filename, original_name, session.get('username'))
+            )
+            saved += 1
+
+        audit_log('UPLOAD_RECEIPT', success=saved > 0, details={'transaction_id': transaction_id, 'saved': saved, 'errors': errors})
+
+        if saved == 0:
+            return jsonify({'error': 'No files were saved', 'details': errors}), 400
+        return jsonify({'message': f'{saved} receipt(s) uploaded successfully', 'errors': errors}), 200
+    except Exception as e:
+        print(f"Error uploading receipts: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/receipts', methods=['GET'])
+def list_receipts(transaction_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if not is_feature_enabled('feature_receipts'):
+            return jsonify({'error': 'Receipt attachments are disabled'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        receipts = execute_query(
+            f'SELECT id, original_filename, uploaded_by, uploaded_at FROM transaction_receipts '
+            f'WHERE transaction_id = {placeholder} ORDER BY uploaded_at ASC',
+            (transaction_id,), fetch=True
+        )
+        return jsonify(receipts), 200
+    except Exception as e:
+        print(f"Error listing receipts: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/receipts/<int:receipt_id>', methods=['GET'])
+def get_receipt_file(transaction_id, receipt_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if not is_feature_enabled('feature_receipts'):
+            return jsonify({'error': 'Receipt attachments are disabled'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        receipt = execute_query(
+            f'SELECT filename FROM transaction_receipts WHERE id = {placeholder} AND transaction_id = {placeholder}',
+            (receipt_id, transaction_id), fetch=True, fetchone=True
+        )
+        if not receipt:
+            return jsonify({'error': 'Receipt not found'}), 404
+
+        # Filename comes from the DB, never from the request - no path traversal possible
+        return send_from_directory(RECEIPTS_DIR, os.path.basename(receipt['filename']))
+    except Exception as e:
+        print(f"Error fetching receipt: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/receipts/<int:receipt_id>', methods=['DELETE'])
+def delete_receipt_file(transaction_id, receipt_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if session.get('role') != 'owner':
+            return jsonify({'error': 'Only owners can remove receipts'}), 403
+        if not is_feature_enabled('feature_receipts'):
+            return jsonify({'error': 'Receipt attachments are disabled'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        receipt = execute_query(
+            f'SELECT filename FROM transaction_receipts WHERE id = {placeholder} AND transaction_id = {placeholder}',
+            (receipt_id, transaction_id), fetch=True, fetchone=True
+        )
+        if not receipt:
+            return jsonify({'error': 'Receipt not found'}), 404
+
+        full_path = os.path.join(RECEIPTS_DIR, os.path.basename(receipt['filename']))
+        if os.path.exists(full_path):
+            os.remove(full_path)
+
+        execute_query(
+            f'DELETE FROM transaction_receipts WHERE id = {placeholder}',
+            (receipt_id,)
+        )
+
+        audit_log('DELETE_RECEIPT', success=True, details={'transaction_id': transaction_id, 'receipt_id': receipt_id})
+        return jsonify({'message': 'Receipt removed'}), 200
+    except Exception as e:
+        print(f"Error deleting receipt: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/trash', methods=['GET'])
+def get_trashed_transactions():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if session.get('role') != 'owner':
+            return jsonify({'error': 'Only owners can view the trash'}), 403
+
+        transactions = execute_query(
+            'SELECT * FROM transactions WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC',
+            fetch=True
+        )
+        return jsonify(transactions), 200
+    except Exception as e:
+        print(f"Error fetching trashed transactions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/restore', methods=['POST'])
+def restore_transaction(transaction_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if session.get('role') != 'owner':
+            return jsonify({'error': 'Only owners can restore transactions'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        transaction = execute_query(
+            f'SELECT id FROM transactions WHERE id = {placeholder} AND deleted_at IS NOT NULL',
+            (transaction_id,), fetch=True, fetchone=True
+        )
+        if not transaction:
+            return jsonify({'error': 'Trashed transaction not found'}), 404
+
+        execute_query(
+            f'UPDATE transactions SET deleted_at = NULL WHERE id = {placeholder}',
+            (transaction_id,)
+        )
+        execute_query(
+            f'UPDATE salary_records SET deleted_at = NULL WHERE transaction_id = {placeholder}',
+            (transaction_id,)
+        )
+
+        audit_log('RESTORE_TRANSACTION', success=True, details={'transaction_id': transaction_id})
+        return jsonify({'message': 'Transaction restored'}), 200
+    except Exception as e:
+        print(f"Error restoring transaction: {e}")
+        audit_log('RESTORE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'error': str(e)})
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/<int:transaction_id>/permanent', methods=['DELETE'])
+def permanently_delete_transaction(transaction_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if session.get('role') != 'owner':
+            return jsonify({'error': 'Only owners can permanently delete transactions'}), 403
+
+        placeholder = '%s' if USE_MYSQL else '?'
+        transaction = execute_query(
+            f'SELECT id FROM transactions WHERE id = {placeholder} AND deleted_at IS NOT NULL',
+            (transaction_id,), fetch=True, fetchone=True
+        )
+        if not transaction:
+            return jsonify({'error': 'Trashed transaction not found. Move it to trash first.'}), 404
+
+        # Clean up any attached receipt files before dropping their DB rows,
+        # otherwise they'd be orphaned on disk forever with no transaction to belong to.
+        receipts = execute_query(
+            f'SELECT filename FROM transaction_receipts WHERE transaction_id = {placeholder}',
+            (transaction_id,), fetch=True
+        )
+        for r in (receipts or []):
+            full_path = os.path.join(RECEIPTS_DIR, os.path.basename(r['filename']))
+            if os.path.exists(full_path):
+                os.remove(full_path)
+        execute_query(f'DELETE FROM transaction_receipts WHERE transaction_id = {placeholder}', (transaction_id,))
+
+        execute_query(f'DELETE FROM salary_records WHERE transaction_id = {placeholder}', (transaction_id,))
+        execute_query(f'DELETE FROM transactions WHERE id = {placeholder}', (transaction_id,))
+
+        audit_log('PERMANENT_DELETE_TRANSACTION', success=True, details={'transaction_id': transaction_id})
+        return jsonify({'message': 'Transaction permanently deleted'}), 200
+    except Exception as e:
+        print(f"Error permanently deleting transaction: {e}")
+        audit_log('PERMANENT_DELETE_TRANSACTION', success=False, details={'transaction_id': transaction_id, 'error': str(e)})
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/dashboard/balances', methods=['GET'])
 def get_balances():
@@ -1047,7 +1398,7 @@ def get_balances():
             parts.append(f"SUM(CASE WHEN {f}_method='upi' THEN {f} ELSE 0 END) as {f}_upi")
         parts.append("COUNT(*) as cnt")
         
-        query = f"SELECT {', '.join(parts)} FROM transactions"
+        query = f"SELECT {', '.join(parts)} FROM transactions WHERE deleted_at IS NULL"
         result = execute_query(query, fetch=True, fetchone=True)
         
         cash_income = sum(float(result.get(f'{f}_cash', 0) or 0) for f in income_fields)
@@ -1060,7 +1411,7 @@ def get_balances():
         
         # Get the last transaction's closing balance
         last_transaction = execute_query(
-            'SELECT closing_balance FROM transactions ORDER BY id DESC LIMIT 1',
+            'SELECT closing_balance FROM transactions WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1',
             fetch=True, fetchone=True
         )
         total_balance = last_transaction['closing_balance'] if last_transaction and last_transaction['closing_balance'] is not None else 0
@@ -1077,6 +1428,53 @@ def get_balances():
         }), 200
     except Exception as e:
         print(f"Error calculating balances: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/month-comparison', methods=['GET'])
+def get_month_comparison():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        placeholder = '%s' if USE_MYSQL else '?'
+
+        today = datetime.now()
+        current_month_start = today.replace(day=1).strftime('%Y-%m-%d')
+        # First day of next month = start of current month plus ~35 days, reset to day 1
+        next_month_start = (today.replace(day=28) + timedelta(days=7)).replace(day=1).strftime('%Y-%m-%d')
+        # First day of previous month = day 1 of current month minus 1 day, reset to day 1
+        prev_month_start = (today.replace(day=1) - timedelta(days=1)).replace(day=1).strftime('%Y-%m-%d')
+
+        def totals_for_range(start, end):
+            query = f'''
+                SELECT COALESCE(SUM(total_income), 0) as income, COALESCE(SUM(total_expense), 0) as expense
+                FROM transactions
+                WHERE deleted_at IS NULL AND date >= {placeholder} AND date < {placeholder}
+            '''
+            result = execute_query(query, (start, end), fetch=True, fetchone=True)
+            income = float(result['income'] or 0) if result else 0
+            expense = float(result['expense'] or 0) if result else 0
+            return income, expense
+
+        current_income, current_expense = totals_for_range(current_month_start, next_month_start)
+        previous_income, previous_expense = totals_for_range(prev_month_start, current_month_start)
+
+        return jsonify({
+            'currentMonth': {
+                'label': today.strftime('%B %Y'),
+                'income': current_income,
+                'expense': current_expense,
+                'available': current_income - current_expense
+            },
+            'previousMonth': {
+                'label': (today.replace(day=1) - timedelta(days=1)).strftime('%B %Y'),
+                'income': previous_income,
+                'expense': previous_expense,
+                'available': previous_income - previous_expense
+            }
+        }), 200
+    except Exception as e:
+        print(f"Error calculating month comparison: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/category-totals', methods=['GET'])
@@ -1124,7 +1522,7 @@ def get_category_totals():
         
         if sum_parts:
             sums = ', '.join(sum_parts)
-            query = f"SELECT {sums} FROM transactions"
+            query = f"SELECT {sums} FROM transactions WHERE deleted_at IS NULL"
             result = execute_query(query, fetch=True, fetchone=True)
             
             # Separate income and expense totals
@@ -1178,7 +1576,7 @@ def create_salary_records():
         # Create a transaction entry so it reflects on dashboard
         # Get last closing balance
         last_tx = execute_query(
-            'SELECT closing_balance FROM transactions ORDER BY id DESC LIMIT 1',
+            'SELECT closing_balance FROM transactions WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 1',
             fetch=True, fetchone=True
         )
         opening_balance = float(last_tx['closing_balance']) if last_tx and last_tx['closing_balance'] is not None else 0
@@ -1240,9 +1638,10 @@ def get_salary_records():
                 SUM(amount) as total_amount,
                 {group_concat}(employee_name) as employees,
                 MIN(id) as record_id
-            FROM salary_records 
-            GROUP BY date 
-            ORDER BY date DESC 
+            FROM salary_records
+            WHERE deleted_at IS NULL
+            GROUP BY date
+            ORDER BY date DESC
             LIMIT {placeholder}
         '''
         
@@ -1258,7 +1657,7 @@ def get_all_salary_records():
     try:
         if 'user_id' not in session:
             return jsonify({'error': 'Not authenticated'}), 401
-        records = execute_query('SELECT * FROM salary_records ORDER BY date DESC', fetch=True)
+        records = execute_query('SELECT * FROM salary_records WHERE deleted_at IS NULL ORDER BY date DESC', fetch=True)
         return jsonify(records), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1270,7 +1669,7 @@ def get_salary_records_by_date(date):
             return jsonify({'error': 'Not authenticated'}), 401
 
         placeholder = '%s' if USE_MYSQL else '?'
-        query = f'SELECT * FROM salary_records WHERE DATE(date) = DATE({placeholder}) ORDER BY employee_name'
+        query = f'SELECT * FROM salary_records WHERE DATE(date) = DATE({placeholder}) AND deleted_at IS NULL ORDER BY employee_name'
         
         records = execute_query(query, (date,), fetch=True)
         
@@ -1315,8 +1714,9 @@ def delete_salary_record(record_id):
             )
 
             if remaining_records and remaining_records['cnt'] == 0:
+                # Soft-delete to stay consistent with the transactions trash/restore flow
                 execute_query(
-                    f'DELETE FROM transactions WHERE id = {placeholder}',
+                    f'UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = {placeholder}',
                     (linked_transaction_id,)
                 )
 
@@ -1497,12 +1897,43 @@ def delete_setting(setting_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/audit-log', methods=['GET'])
+def get_audit_log():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+        if session.get('role') != 'owner':
+            return jsonify({'error': 'Only owners can view the audit log'}), 403
+        if not is_feature_enabled('feature_audit_log'):
+            return jsonify({'error': 'The audit log page is disabled'}), 403
+
+        entries = []
+        if os.path.exists('audit.log'):
+            with open('audit.log', 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue  # skip malformed lines rather than failing the whole request
+
+        # Newest first, capped to the most recent 1000 entries
+        entries.reverse()
+        return jsonify(entries[:1000]), 200
+    except Exception as e:
+        print(f"Error reading audit log: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # Catch-all static file route (must be AFTER all API routes)
 @app.route('/<path:path>')
 def serve_static(path):
     ext = os.path.splitext(path)[1].lower()
     basename = os.path.basename(path)
-    if ext not in ALLOWED_EXTENSIONS or basename.startswith('.') or '..' in path:
+    # Uploaded receipts must never be reachable through this unauthenticated route -
+    # they're only ever served via the authenticated /api/transactions/<id>/receipt endpoint.
+    if ext not in ALLOWED_EXTENSIONS or basename.startswith('.') or '..' in path or path.startswith('uploads/'):
         return jsonify({'error': 'Not found'}), 404
     return send_from_directory('.', path)
 

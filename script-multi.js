@@ -2,6 +2,7 @@
 let incomeCategories = [];
 let expenseCategories = [];
 let employeeList = [];
+let allSettingsItems = [];
 
 // Load settings from API
 async function loadSettings() {
@@ -9,9 +10,15 @@ async function loadSettings() {
         const res = await fetch('/api/settings', { credentials: 'include' });
         if (!res.ok) throw new Error('Failed to load settings');
         const items = await res.json();
+        allSettingsItems = items;
         incomeCategories = items.filter(i => i.type === 'income_category').map(i => ({ id: i.key_id, label: i.label }));
         expenseCategories = items.filter(i => i.type === 'expense_category').map(i => ({ id: i.key_id, label: i.label }));
         employeeList = items.filter(i => i.type === 'employee').map(i => ({ id: i.key_id, label: i.label }));
+
+        const receiptsFlag = items.find(i => i.type === 'app_config' && i.key_id === 'feature_receipts');
+        const receiptsEnabled = receiptsFlag ? Number(receiptsFlag.salary_amount) !== 0 : true;
+        const receiptSection = document.getElementById('receiptUploadSection');
+        if (receiptSection) receiptSection.style.display = receiptsEnabled ? '' : 'none';
     } catch (e) {
         // Fallback to defaults if API fails
         incomeCategories = [
@@ -684,6 +691,29 @@ function setupFormSubmit() {
             const data = await response.json();
 
             if (response.ok) {
+                const transactionId = editId || data.id;
+                const receiptInput = document.getElementById('receiptFile');
+                if (receiptInput && receiptInput.files.length > 0 && transactionId) {
+                    const receiptFormData = new FormData();
+                    for (const file of receiptInput.files) {
+                        receiptFormData.append('receipts', file);
+                    }
+                    try {
+                        const receiptRes = await fetch(`/api/transactions/${transactionId}/receipts`, {
+                            method: 'POST',
+                            credentials: 'include',
+                            body: receiptFormData
+                        });
+                        if (!receiptRes.ok) {
+                            const receiptErr = await receiptRes.json();
+                            alert(`Transaction saved, but the receipt upload failed: ${receiptErr.error || 'unknown error'}`);
+                        }
+                    } catch (receiptError) {
+                        console.error('Error uploading receipts:', receiptError);
+                        alert('Transaction saved, but the receipt upload failed. Please try again from the dashboard.');
+                    }
+                }
+
                 if (editId) {
                     alert('Transaction updated successfully!');
                     window.location.href = 'dashboard.html';

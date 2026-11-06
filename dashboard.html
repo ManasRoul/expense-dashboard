@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark-mode');</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Dashboard</title>
     <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="dark-mode.css">
 </head>
 <body>
     <div class="dashboard-container">
@@ -12,13 +14,17 @@
             <h1>💰 Financial Dashboard</h1>
             <div class="header-actions">
                 <button onclick="openDownloadModal()" class="btn btn-download">📥 Download Report</button>
+                <button onclick="openImportModal()" class="btn btn-download">📤 Import</button>
                 <a href="charts.html" class="btn btn-info">📈 Charts</a>
                 <a href="categories.html" class="btn btn-info">📊 Category View</a>
                 <a href="salary.html" class="btn btn-info">💰 Salary</a>
                 <a href="form.html" class="btn btn-primary">+ New Entry</a>
+                <button onclick="openTrashModal()" class="btn btn-secondary" id="trashBtn" style="display:none;">🗑️ Trash</button>
                 <button onclick="refreshDashboard(this)" class="btn btn-secondary">🔄 Refresh</button>
             </div>
         </header>
+
+        <div id="alertBanners"></div>
 
         <div class="stats-grid">
             <!-- Cash Balance Card -->
@@ -60,11 +66,40 @@
             </div>
         </div>
 
+        <!-- Month Comparison Widget -->
+        <div class="month-comparison-card" id="monthComparisonCard" style="display:none;">
+            <h2>📊 This Month vs Last Month</h2>
+            <div class="month-comparison-grid">
+                <div class="month-comparison-col">
+                    <div class="month-comparison-label" id="mcCurrentLabel">This Month</div>
+                    <div class="month-comparison-row"><span>Income</span><span class="positive" id="mcCurrentIncome">₹0.00</span></div>
+                    <div class="month-comparison-row"><span>Expense</span><span class="negative" id="mcCurrentExpense">₹0.00</span></div>
+                    <div class="month-comparison-row total"><span>Available</span><span id="mcCurrentAvailable">₹0.00</span></div>
+                </div>
+                <div class="month-comparison-col">
+                    <div class="month-comparison-label" id="mcPreviousLabel">Last Month</div>
+                    <div class="month-comparison-row"><span>Income</span><span class="positive" id="mcPreviousIncome">₹0.00</span></div>
+                    <div class="month-comparison-row"><span>Expense</span><span class="negative" id="mcPreviousExpense">₹0.00</span></div>
+                    <div class="month-comparison-row total"><span>Available</span><span id="mcPreviousAvailable">₹0.00</span></div>
+                </div>
+            </div>
+            <div class="month-comparison-change" id="mcChangeBadge"></div>
+        </div>
+
         <!-- Recent Transactions -->
         <div class="transactions-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2>Recent Transactions</h2>
                 <div class="date-filter-container">
+                    <input type="text" id="txSearchFilter" class="date-filter-input" placeholder="🔍 Search comments/date..." oninput="loadRecentTransactions()">
+                    <select id="txCategoryFilter" class="date-filter-input" onchange="loadRecentTransactions()">
+                        <option value="">All Categories</option>
+                    </select>
+                    <select id="txMethodFilter" class="date-filter-input" onchange="loadRecentTransactions()">
+                        <option value="">All Methods</option>
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI</option>
+                    </select>
                     <label for="filterFromDate">From:</label>
                     <input type="date" id="filterFromDate" class="date-filter-input">
                     <label for="filterToDate">To:</label>
@@ -94,6 +129,19 @@
             </div>
         </div>
 
+        <!-- Trash Modal -->
+        <div id="trashModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🗑️ Trash</h2>
+                    <button class="modal-close" onclick="closeTrashModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-container" id="trashModalBody"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Transaction Details Modal -->
         <div id="transactionModal" class="modal" style="display: none;">
             <div class="modal-content">
@@ -103,6 +151,34 @@
                 </div>
                 <div class="modal-body" id="modalBody">
                     <!-- Transaction details will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Transactions Modal -->
+        <div id="importModal" class="modal" style="display: none;">
+            <div class="modal-content download-modal">
+                <div class="modal-header">
+                    <h2>📤 Import Transactions</h2>
+                    <button class="modal-close" onclick="closeImportModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="download-form">
+                        <div class="form-section">
+                            <h3>1. Download the template</h3>
+                            <p style="color: #475569; margin-bottom: 15px;">The template columns match your current active categories. Fill in one row per transaction, leaving unused category columns blank.</p>
+                            <button class="btn btn-info" onclick="downloadImportTemplate()">⬇️ Download Template (.xlsx)</button>
+                        </div>
+                        <div class="form-section">
+                            <h3>2. Upload your filled-in file</h3>
+                            <input type="file" id="importFileInput" accept=".csv,.xlsx,.xls">
+                        </div>
+                        <div class="download-actions">
+                            <button onclick="processImportFile()" class="btn btn-primary btn-lg">Import</button>
+                            <button onclick="closeImportModal()" class="btn btn-secondary">Cancel</button>
+                        </div>
+                        <div id="importResults" style="margin-top: 20px;"></div>
+                    </div>
                 </div>
             </div>
         </div>
