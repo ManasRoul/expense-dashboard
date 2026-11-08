@@ -1,3 +1,11 @@
+// Escape untrusted text (comments, vendor names, labels) before inserting into innerHTML -
+// these can contain free text from any logged-in user, not just the owner.
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
 // Global category metadata
 let categoryMetadata = [];
 
@@ -13,6 +21,9 @@ document.addEventListener('DOMContentLoaded', () => {
         loadRecentTransactions();
         loadMonthComparison();
         checkAlerts();
+
+        const vendorsLink = document.getElementById('vendorsNavLink');
+        if (vendorsLink) vendorsLink.style.display = isFeatureEnabled('feature_vendor_tracking') ? '' : 'none';
     });
 });
 
@@ -21,15 +32,19 @@ const dismissedAlerts = new Set();
 // Low-balance / expense-spike alert banners. In-memory dismissal only (resets on reload).
 async function checkAlerts() {
     try {
-        const [balancesRes, comparisonRes] = await Promise.all([
+        const [balancesRes, comparisonRes, budgetRes, templatesRes] = await Promise.all([
             fetch('/api/dashboard/balances', { credentials: 'include' }),
-            fetch('/api/dashboard/month-comparison', { credentials: 'include' })
+            fetch('/api/dashboard/month-comparison', { credentials: 'include' }),
+            fetch('/api/dashboard/category-budget-status', { credentials: 'include' }),
+            fetch('/api/recurring-templates', { credentials: 'include' })
         ]);
         const balances = await balancesRes.json();
         const comparison = comparisonRes.ok ? await comparisonRes.json() : null;
+        const templates = templatesRes.ok ? await templatesRes.json() : [];
+        const overBudget = budgetRes.ok ? await budgetRes.json() : [];
 
         const thresholdSetting = categoryMetadata.find(c => c.type === 'app_config' && c.key_id === 'low_balance_threshold');
-        const threshold = thresholdSetting ? parseFloat(thresholdSetting.salary_amount) || 0 : 5000;
+        const threshold = thresholdSetting ? parseFloat(thresholdSetting.value) || 0 : 5000;
 
         const alerts = [];
 
@@ -51,6 +66,27 @@ async function checkAlerts() {
                     message: `📈 Expense spike: ${comparison.currentMonth.label} expenses (₹${comparison.currentMonth.expense.toFixed(2)}) are ${((spikeRatio - 1) * 100).toFixed(0)}% higher than ${comparison.previousMonth.label}.`
                 });
             }
+        }
+
+        overBudget.forEach(cat => {
+            alerts.push({
+                id: `budget-${cat.key_id}`,
+                level: 'warning',
+                message: `🎯 Budget exceeded: "${cat.label}" is at ₹${cat.spent.toFixed(2)} this month, ₹${cat.overBy.toFixed(2)} over your ₹${cat.budget.toFixed(2)} budget.`
+            });
+        });
+
+        const todayDay = new Date().getDate();
+        const currentYearMonth = new Date().toISOString().slice(0, 7);
+        const dueTemplates = templates.filter(t =>
+            t.day_of_month && todayDay >= t.day_of_month && t.last_applied_month !== currentYearMonth
+        );
+        if (dueTemplates.length > 0) {
+            alerts.push({
+                id: 'recurring-due',
+                level: 'warning',
+                message: `🔁 ${dueTemplates.length} recurring item(s) may be due this month: ${dueTemplates.map(t => t.label).join(', ')}. <a href="form.html">Go to form →</a>`
+            });
         }
 
         const container = document.getElementById('alertBanners');
@@ -112,9 +148,14 @@ async function loadMonthComparison() {
 // Load category metadata from settings
 async function loadCategoryMetadata() {
     try {
-        const res = await fetch('/api/settings', { credentials: 'include' });
-        if (!res.ok) throw new Error('Failed to load settings');
-        categoryMetadata = await res.json();
+        const [settingsRes, appConfigRes] = await Promise.all([
+            fetch('/api/settings', { credentials: 'include' }),
+            fetch('/api/app-config', { credentials: 'include' })
+        ]);
+        if (!settingsRes.ok) throw new Error('Failed to load settings');
+        const settings = await settingsRes.json();
+        const appConfig = appConfigRes.ok ? await appConfigRes.json() : [];
+        categoryMetadata = settings.concat(appConfig);
     } catch (error) {
         console.error('Error loading category metadata:', error);
         categoryMetadata = [];
@@ -169,13 +210,15 @@ function updateBalanceColors(elementId, value) {
 // Check an owner-configurable feature flag from already-loaded category metadata
 function isFeatureEnabled(keyId) {
     const flag = categoryMetadata.find(c => c.type === 'app_config' && c.key_id === keyId);
-    return flag ? Number(flag.salary_amount) !== 0 : true;
+    return flag ? Number(flag.value) !== 0 : true;
 }
 
 // Populate the category filter dropdown from already-loaded category metadata
 function populateCategoryFilter() {
     const select = document.getElementById('txCategoryFilter');
-    if (!select || select.options.length > 1) return; // already populated
+    if (!select) return;
+    const previousValue = select.value;
+    select.innerHTML = '<option value="">All Categories</option>';
     categoryMetadata
         .filter(c => c.type === 'income_category' || c.type === 'expense_category')
         .forEach(c => {
@@ -184,9 +227,16 @@ function populateCategoryFilter() {
             opt.textContent = `${c.icon || ''} ${c.label}`.trim();
             select.appendChild(opt);
         });
+    // Keep the current selection if that category still exists, otherwise reset to "All"
+    if ([...select.options].some(o => o.value === previousValue)) {
+        select.value = previousValue;
+    }
 }
 
 // Load recent transactions
+const TX_PAGE_SIZE = 10;
+let txPaginationState = { sortedDates: [], transactionsByDate: {}, isOwner: false, page: 1 };
+
 async function loadRecentTransactions(fromDate = null, toDate = null) {
     try {
         if (fromDate === null) fromDate = document.getElementById('filterFromDate')?.value || null;
@@ -204,6 +254,8 @@ async function loadRecentTransactions(fromDate = null, toDate = null) {
 
         if (transactions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="loading-message">No transactions found</td></tr>';
+            txPaginationState = { sortedDates: [], transactionsByDate: {}, isOwner: false, page: 1 };
+            updateTransactionsPageIndicator();
             return;
         }
 
@@ -260,6 +312,8 @@ async function loadRecentTransactions(fromDate = null, toDate = null) {
 
         if (filteredTransactions.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="loading-message">No transactions found for the selected filters</td></tr>';
+            txPaginationState = { sortedDates: [], transactionsByDate: {}, isOwner: false, page: 1 };
+            updateTransactionsPageIndicator();
             return;
         }
 
@@ -276,49 +330,87 @@ async function loadRecentTransactions(fromDate = null, toDate = null) {
         // Sort dates in descending order (newest first)
         const sortedDates = Object.keys(transactionsByDate).sort().reverse();
 
-        // Build table rows - one row per date with aggregated totals
-        tbody.innerHTML = sortedDates.map(dateStr => {
-            let dateTransactions = transactionsByDate[dateStr];
-            
-            // Sort transactions by ID (ascending) to ensure last entry is the most recent
-            dateTransactions.sort((a, b) => a.id - b.id);
-            
-            // Calculate aggregated totals for this date
-            let openingBalance = dateTransactions[0].opening_balance; // First entry's opening balance
-            let closingBalance = dateTransactions[dateTransactions.length - 1].closing_balance; // Last entry's closing balance
-            let totalIncome = 0;
-            let totalExpense = 0;
-            let totalTransactionsOnDate = dateTransactions.length;
-            
-            dateTransactions.forEach(t => {
-                totalIncome += parseFloat(t.total_income) || 0;
-                totalExpense += parseFloat(t.total_expense) || 0;
-            });
-            
-            const deleteButton = isOwner ? `<button class="btn-delete" onclick="deleteAllTransactionsForDate('${dateStr}')" title="Delete all entries from ${dateStr}">🗑️</button>` : '';
-            
-            return `
-                <tr>
-                    <td>
-                        <strong>${new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>
-                        <br><small style="color: #666;">${totalTransactionsOnDate} ${totalTransactionsOnDate === 1 ? 'entry' : 'entries'}</small>
-                    </td>
-                    <td>₹${parseFloat(openingBalance).toFixed(2)}</td>
-                    <td class="positive">₹${totalIncome.toFixed(2)}</td>
-                    <td class="negative">₹${totalExpense.toFixed(2)}</td>
-                    <td>₹${parseFloat(closingBalance).toFixed(2)}</td>
-                    <td>
-                        <button class="btn-view" onclick="viewDateTransactions('${dateStr}')">View ${totalTransactionsOnDate > 1 ? 'All' : 'Details'}</button>
-                        ${deleteButton}
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        // Store the grouped result and reset to page 1 - rendering/paging from
+        // here on is pure client-side slicing (no re-fetch), so Prev/Next are
+        // instant even with a large transaction history.
+        txPaginationState = { sortedDates, transactionsByDate, isOwner, page: 1 };
+        renderTransactionsPage();
     } catch (error) {
         console.error('Error loading transactions:', error);
-        document.getElementById('transactionsBody').innerHTML = 
+        document.getElementById('transactionsBody').innerHTML =
             '<tr><td colspan="6" class="loading-message">Error loading transactions</td></tr>';
     }
+}
+
+// Renders just the current page of already-filtered/grouped dates - called
+// after a fresh load (page reset to 1) and by goToTransactionsPage() (no
+// network round-trip, so paging stays fast regardless of total history size).
+function renderTransactionsPage() {
+    const { sortedDates, transactionsByDate, isOwner, page } = txPaginationState;
+    const tbody = document.getElementById('transactionsBody');
+    const totalPages = Math.max(1, Math.ceil(sortedDates.length / TX_PAGE_SIZE));
+    const currentPage = Math.min(Math.max(1, page), totalPages);
+    txPaginationState.page = currentPage;
+
+    const start = (currentPage - 1) * TX_PAGE_SIZE;
+    const pageDates = sortedDates.slice(start, start + TX_PAGE_SIZE);
+
+    tbody.innerHTML = pageDates.map(dateStr => {
+        let dateTransactions = transactionsByDate[dateStr];
+
+        // Sort transactions by ID (ascending) to ensure last entry is the most recent
+        dateTransactions.sort((a, b) => a.id - b.id);
+
+        // Calculate aggregated totals for this date
+        let openingBalance = dateTransactions[0].opening_balance; // First entry's opening balance
+        let closingBalance = dateTransactions[dateTransactions.length - 1].closing_balance; // Last entry's closing balance
+        let totalIncome = 0;
+        let totalExpense = 0;
+        let totalTransactionsOnDate = dateTransactions.length;
+
+        dateTransactions.forEach(t => {
+            totalIncome += parseFloat(t.total_income) || 0;
+            totalExpense += parseFloat(t.total_expense) || 0;
+        });
+
+        const deleteButton = isOwner ? `<button class="btn-delete" onclick="deleteAllTransactionsForDate('${dateStr}')" title="Delete all entries from ${dateStr}">🗑️</button>` : '';
+
+        return `
+            <tr>
+                <td>
+                    <strong>${new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</strong>
+                    <br><small style="color: #666;">${totalTransactionsOnDate} ${totalTransactionsOnDate === 1 ? 'entry' : 'entries'}</small>
+                </td>
+                <td>₹${parseFloat(openingBalance).toFixed(2)}</td>
+                <td class="positive">₹${totalIncome.toFixed(2)}</td>
+                <td class="negative">₹${totalExpense.toFixed(2)}</td>
+                <td>₹${parseFloat(closingBalance).toFixed(2)}</td>
+                <td>
+                    <button class="btn-view" onclick="viewDateTransactions('${dateStr}')">View ${totalTransactionsOnDate > 1 ? 'All' : 'Details'}</button>
+                    ${deleteButton}
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    updateTransactionsPageIndicator(currentPage, totalPages);
+}
+
+// Updates the "Page X of Y" label and Prev/Next disabled state. Defaults to
+// an empty 1-of-1 state when called with no args (e.g. zero results).
+function updateTransactionsPageIndicator(currentPage = 1, totalPages = 1) {
+    const indicator = document.getElementById('txPageIndicator');
+    if (indicator) indicator.textContent = `Page ${currentPage} of ${totalPages}`;
+    const prevBtn = document.getElementById('txPrevPageBtn');
+    const nextBtn = document.getElementById('txNextPageBtn');
+    if (prevBtn) prevBtn.disabled = currentPage <= 1;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+}
+
+// Moves the Recent Transactions table by one page without re-fetching.
+function goToTransactionsPage(delta) {
+    txPaginationState.page += delta;
+    renderTransactionsPage();
 }
 
 // View all transactions for a specific date
@@ -388,13 +480,17 @@ function refreshDashboard(btn) {
     btn.innerHTML = '⏳ Refreshing...';
     btn.disabled = true;
     
-    // Reload data
-    Promise.all([
-        loadDashboardData(),
-        loadRecentTransactions(),
-        loadMonthComparison(),
-        checkAlerts()
-    ]).then(() => {
+    // Reload data - category metadata first, since categories may have changed in Settings
+    // since the page was first loaded (new/removed categories, feature flags, etc.)
+    loadCategoryMetadata().then(() => {
+        populateCategoryFilter();
+        return Promise.all([
+            loadDashboardData(),
+            loadRecentTransactions(),
+            loadMonthComparison(),
+            checkAlerts()
+        ]);
+    }).then(() => {
         // Show success briefly
         btn.innerHTML = '✅ Refreshed!';
         setTimeout(() => {
@@ -431,7 +527,8 @@ function viewTransaction(id) {
                 label: cat.label,
                 amount: cat.key_id,
                 method: `${cat.key_id}_method`,
-                comment: `${cat.key_id}_comment`
+                comment: `${cat.key_id}_comment`,
+                vendor: `${cat.key_id}_vendor`
             }));
 
         expenseItems = categoryMetadata
@@ -440,7 +537,8 @@ function viewTransaction(id) {
                 label: cat.label,
                 amount: cat.key_id,
                 method: `${cat.key_id}_method`,
-                comment: `${cat.key_id}_comment`
+                comment: `${cat.key_id}_comment`,
+                vendor: `${cat.key_id}_vendor`
             }));
     } else {
         // Fallback to hardcoded if metadata isn't loaded
@@ -463,7 +561,7 @@ function viewTransaction(id) {
             { label: 'Hotel Cleaning & Sanitation', amount: 'hotel_cleaning_sanitation', method: 'hotel_cleaning_sanitation_method', comment: 'hotel_cleaning_sanitation_comment' },
             { label: 'Rent & Taxes', amount: 'rent_taxes', method: 'rent_taxes_method', comment: 'rent_taxes_comment' },
             { label: 'TV Recharge', amount: 'tv_recharge', method: 'tv_recharge_method', comment: 'tv_recharge_comment' },
-            { label: 'Camera/WiFi', amount: 'camera_wifi', method: 'camera_wifi_method', comment: 'camera_wifi_comment' },
+            { label: 'Recharge', amount: 'recharge', method: 'recharge_method', comment: 'recharge_comment' },
             { label: 'Plumbing & Maintenance', amount: 'plumbing_maintenance', method: 'plumbing_maintenance_method', comment: 'plumbing_maintenance_comment' },
             { label: 'Electricity & Maintenance', amount: 'electricity_maintenance', method: 'electricity_maintenance_method', comment: 'electricity_maintenance_comment' },
             { label: 'Electricity Bill', amount: 'electricity_bill', method: 'electricity_bill_method', comment: 'electricity_bill_comment' },
@@ -488,48 +586,55 @@ function viewTransaction(id) {
         parsed: parseFloat(transaction[item.amount])
     })));
 
-    let incomeHTML = '<table class="detail-table"><thead><tr><th>Income Source</th><th>Payment Method</th><th>Amount</th><th>Comment</th></tr></thead><tbody>';
+    const showVendorColumn = isFeatureEnabled('feature_vendor_tracking');
+    const vendorHeaderHTML = showVendorColumn ? '<th>Vendor/Party</th>' : '';
+
+    let incomeHTML = `<table class="detail-table"><thead><tr><th>Income Source</th><th>Payment Method</th><th>Amount</th>${vendorHeaderHTML}<th>Comment</th></tr></thead><tbody>`;
     incomeItems.forEach(item => {
         const amount = parseFloat(transaction[item.amount]) || 0;
         const method = transaction[item.method] || '-';
         const comment = transaction[item.comment] || '';
+        const vendor = item.vendor ? (transaction[item.vendor] || '') : '';
         if (amount > 0) {
-            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' : 
+            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' :
                               method === 'upi' ? '<span class="badge badge-upi">UPI</span>' : '-';
-            
+
             // Format comment - check if it contains multiple entries (separated by |)
             let commentHTML;
             if (comment && comment.includes('|')) {
                 const entries = comment.split('|').map(e => e.trim()).filter(e => e);
-                commentHTML = `<ul class="multi-entry-list" style="margin: 0; padding-left: 20px; list-style: disc; color: #64748b;">${entries.map(entry => `<li style="margin: 3px 0;">${entry}</li>`).join('')}</ul>`;
+                commentHTML = `<ul class="multi-entry-list" style="margin: 0; padding-left: 20px; list-style: disc; color: #64748b;">${entries.map(entry => `<li style="margin: 3px 0;">${escapeHtml(entry)}</li>`).join('')}</ul>`;
             } else {
-                commentHTML = comment ? `<span class="comment-text">${comment}</span>` : '<span style="color: #9ca3af;">-</span>';
+                commentHTML = comment ? `<span class="comment-text">${escapeHtml(comment)}</span>` : '<span style="color: #9ca3af;">-</span>';
             }
-            
-            incomeHTML += `<tr><td>${item.label}</td><td>${methodBadge}</td><td class="positive">₹${amount.toFixed(2)}</td><td>${commentHTML}</td></tr>`;
+
+            const vendorCellHTML = showVendorColumn ? `<td>${escapeHtml(vendor) || '-'}</td>` : '';
+            incomeHTML += `<tr><td>${escapeHtml(item.label)}</td><td>${methodBadge}</td><td class="positive">₹${amount.toFixed(2)}</td>${vendorCellHTML}<td>${commentHTML}</td></tr>`;
         }
     });
     incomeHTML += '</tbody></table>';
 
-    let expenseHTML = '<table class="detail-table"><thead><tr><th>Expense Source</th><th>Payment Method</th><th>Amount</th><th>Comment</th></tr></thead><tbody>';
+    let expenseHTML = `<table class="detail-table"><thead><tr><th>Expense Source</th><th>Payment Method</th><th>Amount</th>${vendorHeaderHTML}<th>Comment</th></tr></thead><tbody>`;
     expenseItems.forEach(item => {
         const amount = parseFloat(transaction[item.amount]) || 0;
         const method = transaction[item.method] || '-';
         const comment = transaction[item.comment] || '';
+        const vendor = item.vendor ? (transaction[item.vendor] || '') : '';
         if (amount > 0) {
-            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' : 
+            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' :
                               method === 'upi' ? '<span class="badge badge-upi">UPI</span>' : '-';
-            
+
             // Format comment - check if it contains multiple entries (separated by |)
             let commentHTML;
             if (comment && comment.includes('|')) {
                 const entries = comment.split('|').map(e => e.trim()).filter(e => e);
-                commentHTML = `<ul class="multi-entry-list" style="margin: 0; padding-left: 20px; list-style: disc; color: #64748b;">${entries.map(entry => `<li style="margin: 3px 0;">${entry}</li>`).join('')}</ul>`;
+                commentHTML = `<ul class="multi-entry-list" style="margin: 0; padding-left: 20px; list-style: disc; color: #64748b;">${entries.map(entry => `<li style="margin: 3px 0;">${escapeHtml(entry)}</li>`).join('')}</ul>`;
             } else {
-                commentHTML = comment ? `<span class="comment-text">${comment}</span>` : '<span style="color: #9ca3af;">-</span>';
+                commentHTML = comment ? `<span class="comment-text">${escapeHtml(comment)}</span>` : '<span style="color: #9ca3af;">-</span>';
             }
-            
-            expenseHTML += `<tr><td>${item.label}</td><td>${methodBadge}</td><td class="negative">₹${amount.toFixed(2)}</td><td>${commentHTML}</td></tr>`;
+
+            const vendorCellHTML = showVendorColumn ? `<td>${escapeHtml(vendor) || '-'}</td>` : '';
+            expenseHTML += `<tr><td>${escapeHtml(item.label)}</td><td>${methodBadge}</td><td class="negative">₹${amount.toFixed(2)}</td>${vendorCellHTML}<td>${commentHTML}</td></tr>`;
         }
     });
     expenseHTML += '</tbody></table>';
@@ -559,7 +664,7 @@ function viewTransaction(id) {
 
         ${isFeatureEnabled('feature_created_by_tracking') ? `
         <div class="detail-section">
-            <p style="color:#64748b; font-size:0.9em;">Entered by: <strong>${transaction.created_by || '—'}</strong>${transaction.updated_by && transaction.updated_by !== transaction.created_by ? ` &middot; Last edited by: <strong>${transaction.updated_by}</strong>` : ''}</p>
+            <p style="color:#64748b; font-size:0.9em;">Entered by: <strong>${escapeHtml(transaction.created_by) || '—'}</strong>${transaction.updated_by && transaction.updated_by !== transaction.created_by ? ` &middot; Last edited by: <strong>${escapeHtml(transaction.updated_by)}</strong>` : ''}</p>
         </div>` : ''}
 
         ${isFeatureEnabled('feature_receipts') ? `<div class="detail-section" id="receiptSection_${id}"><h3>📎 Receipts</h3><p class="loading-message">Loading...</p></div>` : ''}
@@ -607,7 +712,7 @@ function renderReceiptSection(id, receipts) {
         <ul style="list-style:none; padding:0; margin:0 0 12px;">
             ${receipts.map(r => `
                 <li style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid #e2e8f0;">
-                    <a href="/api/transactions/${id}/receipts/${r.id}" target="_blank">📄 ${r.original_filename || 'Receipt #' + r.id}</a>
+                    <a href="/api/transactions/${id}/receipts/${r.id}" target="_blank">📄 ${escapeHtml(r.original_filename) || 'Receipt #' + r.id}</a>
                     ${isOwner ? `<button class="btn btn-secondary" onclick="removeReceipt(${id}, ${r.id})">Remove</button>` : ''}
                 </li>
             `).join('')}
@@ -905,10 +1010,13 @@ function getActiveCategoriesByType(type) {
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 }
 
-function openImportModal() {
+async function openImportModal() {
     document.getElementById('importResults').innerHTML = '';
     document.getElementById('importFileInput').value = '';
     document.getElementById('importModal').style.display = 'flex';
+    // Re-fetch category metadata so the template/import always reflect the current
+    // Settings list, not whatever was cached when the dashboard first loaded.
+    await loadCategoryMetadata();
 }
 
 function closeImportModal() {
@@ -920,9 +1028,20 @@ function downloadImportTemplate() {
     const incomeCategories = getActiveCategoriesByType('income_category');
     const expenseCategories = getActiveCategoriesByType('expense_category');
 
-    const headers = ['Date (YYYY-MM-DD)', 'Opening Balance'];
-    incomeCategories.forEach(c => headers.push(`${c.label} Amount`, `${c.label} Method (cash/upi)`, `${c.label} Comment`));
-    expenseCategories.forEach(c => headers.push(`${c.label} Amount`, `${c.label} Method (cash/upi)`, `${c.label} Comment`));
+    const headers = ['Date (YYYY-MM-DD)', 'Opening Balance (only needed on the first row of a repeated date - later rows auto-chain)'];
+    // Amount/Method/Comment accept ;-separated lists for multiple same-day entries
+    // under one category (e.g. two Room Rent payments on the same date) - see
+    // parseCellEntries()/mergeCategoryEntries() in processImportFile().
+    incomeCategories.forEach(c => headers.push(`${c.label} Amount (; separated for multiple same-day entries)`, `${c.label} Method (cash/upi, ; separated)`, `${c.label} Comment (; separated)`));
+    expenseCategories.forEach(c => {
+        if (c.key_id === 'salary') {
+            // Salary needs structured columns (not a free-text comment) so the server can
+            // link the payment to an employee - see the matching special-case in processImportFile().
+            headers.push('Salary Employee (separate multiple with ;)', 'Salary Payment Type (Advance/Full, ; separated)', 'Salary Amount (; separated)', 'Salary Method (cash/upi, ; separated)', 'Salary Note (; separated)');
+        } else {
+            headers.push(`${c.label} Amount (; separated for multiple same-day entries)`, `${c.label} Method (cash/upi, ; separated)`, `${c.label} Comment (; separated)`);
+        }
+    });
     headers.push('Closing Balance (optional - auto-calculated if blank)');
 
     const ws = XLSX.utils.aoa_to_sheet([headers]);
@@ -931,15 +1050,134 @@ function downloadImportTemplate() {
     XLSX.writeFile(wb, 'Transaction_Import_Template.xlsx');
 }
 
+function dateToLocalISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 function normalizeImportDate(value) {
     if (value instanceof Date) {
-        return value.toISOString().split('T')[0];
+        // Use local date parts, not toISOString() - that converts to UTC first,
+        // which silently shifts the date back a day for any timezone ahead of UTC
+        // (e.g. IST), since the Date object represents local midnight.
+        return dateToLocalISO(value);
     }
     const str = String(value || '').trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0, 10);
     const parsed = new Date(str);
-    if (!isNaN(parsed)) return parsed.toISOString().split('T')[0];
+    if (!isNaN(parsed)) return dateToLocalISO(parsed);
     return null;
+}
+
+// Reads a row cell trying each candidate header name in order, falling back
+// to older header text - templates downloaded before this session's header
+// renames (e.g. plain "Salary Amount" instead of "Salary Amount (; separated)")
+// would otherwise silently read as blank instead of erroring.
+function getCell(row, ...keys) {
+    for (const key of keys) {
+        const val = row[key];
+        if (val !== undefined && val !== null && String(val).trim() !== '') return val;
+    }
+    return '';
+}
+
+// Parses one category's Amount/Method/Comment cell(s) from a single row into
+// a flat list of individual entries (not summed/joined yet) via ;-separated
+// lists. Used both for one row's own ;-separated values and for merging
+// several rows of the same date into one transaction (see batches below) -
+// either way the entries end up combined the same way by mergeCategoryEntries().
+function parseCellEntries(amountStr, methodStr, commentStr) {
+    amountStr = (amountStr || '').toString().trim();
+    if (!amountStr) return [];
+    const amounts = amountStr.split(';').map(s => parseFloat(s.trim()) || 0);
+    const methods = (methodStr || '').toString().split(';').map(s => s.trim().toLowerCase());
+    const comments = (commentStr || '').toString().split(';').map(s => s.trim());
+    return amounts
+        .map((amount, j) => ({
+            amount,
+            method: methods[j] || methods[0] || 'cash',
+            comment: comments[j] || ''
+        }))
+        .filter(e => e.amount > 0);
+}
+
+// Sums entries into one amount; when there's more than one, wraps each into a
+// "(₹amt - METHOD - comment)" bullet joined with ' | ' - the same combined
+// format the manual multi-entry form produces (buildCategoryData() in
+// script-multi.js) - so multiple entries show as one merged transaction with
+// bulleted line items, not several separate "Entry N" cards for the same date.
+// A single entry keeps the plain, unwrapped comment (original single-row behavior).
+function mergeCategoryEntries(entries) {
+    if (entries.length === 0) return null;
+    if (entries.length === 1) {
+        return { amount: entries[0].amount, method: entries[0].method || 'cash', comment: entries[0].comment || '' };
+    }
+    let total = 0;
+    let firstMethod = '';
+    const parts = [];
+    entries.forEach(e => {
+        if (!firstMethod) firstMethod = e.method || 'cash';
+        total += e.amount;
+        const entryParts = [`₹${e.amount.toFixed(2)}`, (e.method || 'cash').toUpperCase()];
+        if (e.comment) entryParts.push(e.comment);
+        parts.push(`(${entryParts.join(' - ')})`);
+    });
+    return { amount: total, method: firstMethod, comment: parts.join(' | ') };
+}
+
+// Parses one row's salary columns into {amount, method, employee, paymentType,
+// note} entries via the same ;-separated zipping as other categories - salary
+// needs structured fields (not just a comment) so the server can link each
+// payment to an employee.
+function parseSalaryRowEntries(row) {
+    const amountsRaw = getCell(row, 'Salary Amount (; separated)', 'Salary Amount').toString().trim();
+    if (!amountsRaw) return [];
+    const amounts = amountsRaw.split(';').map(s => parseFloat(s.trim()) || 0);
+    const employees = getCell(row, 'Salary Employee (separate multiple with ;)', 'Salary Employee').toString().split(';').map(s => s.trim());
+    const methods = getCell(row, 'Salary Method (cash/upi, ; separated)', 'Salary Method (cash/upi)').toString().split(';').map(s => s.trim().toLowerCase());
+    const paymentTypes = getCell(row, 'Salary Payment Type (Advance/Full, ; separated)', 'Salary Payment Type (Advance/Full)').toString().split(';').map(s => s.trim());
+    const notes = getCell(row, 'Salary Note (; separated)', 'Salary Note').toString().split(';').map(s => s.trim());
+
+    if (employees.length !== amounts.length) {
+        throw new Error(`Salary Employee count (${employees.length}) doesn't match Salary Amount count (${amounts.length}) - use the same number of ;-separated values in both columns`);
+    }
+
+    const entries = [];
+    for (let j = 0; j < amounts.length; j++) {
+        const amount = amounts[j];
+        if (amount <= 0) continue;
+        const employee = employees[j] || '';
+        if (!employee) {
+            throw new Error('Salary Amount is set but the matching Salary Employee is blank');
+        }
+        if (/\s/.test(employee)) {
+            throw new Error(`Salary Employee "${employee}" must be a single word (no spaces) for the server to record it correctly`);
+        }
+        const method = methods[j] || methods[0] || 'cash';
+        let paymentType = (paymentTypes[j] || paymentTypes[0] || 'Full');
+        paymentType = paymentType.toLowerCase() === 'advance' ? 'Advance' : 'Full';
+        const note = notes[j] || '';
+        entries.push({ amount, method, employee, paymentType, note });
+    }
+    return entries;
+}
+
+// Sums salary entries and builds the "(₹amt - METHOD - Employee - Type - Note)"
+// comment format save_transaction() parses into one salary_records row per
+// employee, joined with ' | ' for however many employees end up in this batch.
+function mergeSalaryEntries(entries) {
+    if (entries.length === 0) return null;
+    let total = 0;
+    let firstMethod = '';
+    const parts = [];
+    entries.forEach(e => {
+        if (!firstMethod) firstMethod = e.method;
+        total += e.amount;
+        parts.push(`(₹${e.amount.toFixed(2)} - ${e.method.toUpperCase()} - ${e.employee} - ${e.paymentType}${e.note ? ' - ' + e.note : ''})`);
+    });
+    return { amount: total, method: firstMethod, comment: parts.join(' | ') };
 }
 
 async function processImportFile() {
@@ -968,50 +1206,115 @@ async function processImportFile() {
         const incomeCategories = getActiveCategoriesByType('income_category');
         const expenseCategories = getActiveCategoriesByType('expense_category');
 
-        let successCount = 0;
         const errors = [];
 
-        resultsDiv.innerHTML = `<p class="loading-message">Importing 0 / ${rows.length}...</p>`;
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
+        // Pass 1: resolve each row's date (a blank cell means "same date as the
+        // row above") and group consecutive same-date rows into one batch - a
+        // batch becomes exactly one transaction, so multiple employees/entries
+        // on the same day show up as one entry with combined line items
+        // (matching image #2-style merged view), not separate "Entry N" cards.
+        const batches = [];
+        let lastResolvedDate = null;
+        rows.forEach((row, i) => {
             const rowNum = i + 2; // account for header row, 1-indexed
+            const rawDateCell = row['Date (YYYY-MM-DD)'];
+            const dateCellBlank = String(rawDateCell || '').trim() === '';
+            const resolvedDate = dateCellBlank ? lastResolvedDate : normalizeImportDate(rawDateCell);
+
+            if (!resolvedDate) {
+                errors.push(`Row ${rowNum}: Invalid or missing date`);
+                return;
+            }
+            lastResolvedDate = resolvedDate;
+
+            const lastBatch = batches[batches.length - 1];
+            if (lastBatch && lastBatch.date === resolvedDate) {
+                lastBatch.items.push({ row, rowNum });
+            } else {
+                batches.push({ date: resolvedDate, items: [{ row, rowNum }] });
+            }
+        });
+
+        let successRows = 0;
+        let successBatches = 0;
+        let lastClosingBalance = null;
+
+        resultsDiv.innerHTML = `<p class="loading-message">Importing 0 / ${batches.length}...</p>`;
+
+        for (let b = 0; b < batches.length; b++) {
+            const batch = batches[b];
+            const rowLabel = batch.items.length > 1
+                ? `Rows ${batch.items[0].rowNum}-${batch.items[batch.items.length - 1].rowNum}`
+                : `Row ${batch.items[0].rowNum}`;
 
             try {
-                const entryDate = normalizeImportDate(row['Date (YYYY-MM-DD)']);
-                if (!entryDate) throw new Error('Invalid or missing date');
-
-                const openingBalance = parseFloat(row['Opening Balance']) || 0;
+                // Opening balance: first non-blank cell found across the batch's
+                // rows, else chained from the previous batch's closing balance.
+                let openingBalance = null;
+                for (const { row } of batch.items) {
+                    const val = getCell(row, 'Opening Balance (only needed on the first row of a repeated date - later rows auto-chain)', 'Opening Balance');
+                    if (val !== '') { openingBalance = parseFloat(val) || 0; break; }
+                }
+                if (openingBalance === null) {
+                    openingBalance = lastClosingBalance !== null ? lastClosingBalance : 0;
+                }
 
                 const income = {};
                 let totalIncome = 0;
                 incomeCategories.forEach(c => {
-                    const amount = parseFloat(row[`${c.label} Amount`]) || 0;
-                    if (amount > 0) {
-                        totalIncome += amount;
-                        income[c.key_id] = {
-                            amount,
-                            method: (row[`${c.label} Method (cash/upi)`] || 'cash').toString().toLowerCase(),
-                            comment: row[`${c.label} Comment`] || ''
-                        };
+                    const entries = [];
+                    batch.items.forEach(({ row }) => {
+                        entries.push(...parseCellEntries(
+                            getCell(row, `${c.label} Amount (; separated for multiple same-day entries)`, `${c.label} Amount`),
+                            getCell(row, `${c.label} Method (cash/upi, ; separated)`, `${c.label} Method (cash/upi)`),
+                            getCell(row, `${c.label} Comment (; separated)`, `${c.label} Comment`)
+                        ));
+                    });
+                    const merged = mergeCategoryEntries(entries);
+                    if (merged) {
+                        totalIncome += merged.amount;
+                        income[c.key_id] = merged;
                     }
                 });
 
                 const expense = {};
                 let totalExpense = 0;
                 expenseCategories.forEach(c => {
-                    const amount = parseFloat(row[`${c.label} Amount`]) || 0;
-                    if (amount > 0) {
-                        totalExpense += amount;
-                        expense[c.key_id] = {
-                            amount,
-                            method: (row[`${c.label} Method (cash/upi)`] || 'cash').toString().toLowerCase(),
-                            comment: row[`${c.label} Comment`] || ''
-                        };
+                    if (c.key_id === 'salary') {
+                        // Salary comments must match "(₹amount - METHOD - Employee - Type)" for the
+                        // server to create a salary_records entry (see save_transaction() in server.py) -
+                        // a free-text comment (what the generic column would have given) is silently ignored.
+                        const salaryEntries = [];
+                        batch.items.forEach(({ row }) => {
+                            salaryEntries.push(...parseSalaryRowEntries(row));
+                        });
+                        const merged = mergeSalaryEntries(salaryEntries);
+                        if (merged) {
+                            totalExpense += merged.amount;
+                            expense[c.key_id] = merged;
+                        }
+                        return;
+                    }
+
+                    const entries = [];
+                    batch.items.forEach(({ row }) => {
+                        entries.push(...parseCellEntries(
+                            getCell(row, `${c.label} Amount (; separated for multiple same-day entries)`, `${c.label} Amount`),
+                            getCell(row, `${c.label} Method (cash/upi, ; separated)`, `${c.label} Method (cash/upi)`),
+                            getCell(row, `${c.label} Comment (; separated)`, `${c.label} Comment`)
+                        ));
+                    });
+                    const merged = mergeCategoryEntries(entries);
+                    if (merged) {
+                        totalExpense += merged.amount;
+                        expense[c.key_id] = merged;
                     }
                 });
 
-                const rawClosing = row['Closing Balance (optional - auto-calculated if blank)'];
+                // Closing balance: explicit value from the LAST row in the batch
+                // if provided, else computed from the merged totals.
+                const lastRow = batch.items[batch.items.length - 1].row;
+                const rawClosing = lastRow['Closing Balance (optional - auto-calculated if blank)'];
                 const closingBalance = rawClosing !== '' && rawClosing !== undefined
                     ? parseFloat(rawClosing)
                     : openingBalance + totalIncome - totalExpense;
@@ -1019,7 +1322,7 @@ async function processImportFile() {
                 income.totalIncome = totalIncome;
                 expense.totalExpense = totalExpense;
 
-                const payload = { openingBalance, entryDate, income, expense, closingBalance };
+                const payload = { openingBalance, entryDate: batch.date, income, expense, closingBalance };
 
                 const res = await fetch('/api/transactions', {
                     method: 'POST',
@@ -1030,19 +1333,21 @@ async function processImportFile() {
 
                 if (!res.ok) {
                     const errData = await res.json();
-                    throw new Error(errData.error || 'Server rejected this row');
+                    throw new Error(errData.error || 'Server rejected this entry');
                 }
 
-                successCount++;
-            } catch (rowError) {
-                errors.push(`Row ${rowNum}: ${rowError.message}`);
+                successRows += batch.items.length;
+                successBatches++;
+                lastClosingBalance = closingBalance;
+            } catch (batchError) {
+                errors.push(`${rowLabel}: ${batchError.message}`);
             }
 
-            resultsDiv.innerHTML = `<p class="loading-message">Importing ${i + 1} / ${rows.length}...</p>`;
+            resultsDiv.innerHTML = `<p class="loading-message">Importing ${b + 1} / ${batches.length}...</p>`;
         }
 
         resultsDiv.innerHTML = `
-            <p><strong>✅ ${successCount} imported</strong>${errors.length ? `, <strong style="color:#ef4444;">❌ ${errors.length} failed</strong>` : ''}</p>
+            <p><strong>✅ ${successRows} row(s) imported as ${successBatches} transaction(s)</strong>${errors.length ? `, <strong style="color:#ef4444;">❌ ${errors.length} failed</strong>` : ''}</p>
             ${errors.length ? `<ul style="color:#ef4444; font-size:0.9em; max-height:150px; overflow-y:auto;">${errors.map(e => `<li>${e}</li>`).join('')}</ul>` : ''}
         `;
 
@@ -1154,36 +1459,57 @@ async function generateReport() {
 }
 
 // Download as Excel
+// Shared P&L computation for both the Excel and PDF exports: per-category totals
+// (sorted descending, zero-amount categories dropped) plus income/expense grand totals.
+function buildPnlTotals(transactions, incomeCategories, expenseCategories) {
+    const sortedTransactions = [...transactions].sort((a, b) => a.id - b.id);
+
+    function categoryTotals(categories) {
+        return categories
+            .map(cat => ({
+                label: cat.label,
+                amount: sortedTransactions.reduce((sum, t) => sum + (parseFloat(t[cat.field]) || 0), 0)
+            }))
+            .filter(c => c.amount > 0)
+            .sort((a, b) => b.amount - a.amount);
+    }
+
+    const incomeTotals = categoryTotals(incomeCategories);
+    const expenseTotals = categoryTotals(expenseCategories);
+    const totalIncome = incomeTotals.reduce((sum, c) => sum + c.amount, 0);
+    const totalExpense = expenseTotals.reduce((sum, c) => sum + c.amount, 0);
+
+    return { incomeTotals, expenseTotals, totalIncome, totalExpense, sortedTransactions };
+}
+
 function downloadExcel(transactions, fromDate, toDate, incomeCategories, expenseCategories) {
     // Create workbook with multiple sheets
     const wb = XLSX.utils.book_new();
     
-    // --- SUMMARY SHEET ---
-    const summaryData = [];
-    let totalIncome = 0;
-    let totalExpense = 0;
-    
-    // Sort transactions by ID to ensure correct order
-    const sortedTransactions = [...transactions].sort((a, b) => a.id - b.id);
-    
-    sortedTransactions.forEach(t => {
-        totalIncome += parseFloat(t.total_income) || 0;
-        totalExpense += parseFloat(t.total_expense) || 0;
-    });
-    
+    // --- P&L STATEMENT SHEET ---
+    const { incomeTotals, expenseTotals, totalIncome, totalExpense, sortedTransactions } =
+        buildPnlTotals(transactions, incomeCategories, expenseCategories);
+
     const currentBalance = sortedTransactions.length > 0 ? parseFloat(sortedTransactions[sortedTransactions.length - 1].closing_balance) : 0;
-    
-    summaryData.push(['Financial Report - Detailed']);
+
+    const summaryData = [];
+    summaryData.push(['Profit & Loss Statement']);
     summaryData.push([`Date Range: ${fromDate} to ${toDate}`]);
     summaryData.push([]);
-    summaryData.push(['Summary']);
+    summaryData.push(['Income', 'Amount (₹)']);
+    incomeTotals.forEach(c => summaryData.push([c.label, c.amount.toFixed(2)]));
     summaryData.push(['Total Income', totalIncome.toFixed(2)]);
+    summaryData.push([]);
+    summaryData.push(['Expenses', 'Amount (₹)']);
+    expenseTotals.forEach(c => summaryData.push([c.label, c.amount.toFixed(2)]));
     summaryData.push(['Total Expenses', totalExpense.toFixed(2)]);
+    summaryData.push([]);
+    summaryData.push(['Net Profit', (totalIncome - totalExpense).toFixed(2)]);
     summaryData.push(['Current Balance', currentBalance.toFixed(2)]);
-    
+
     const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-    summaryWs['!cols'] = [{ wch: 25 }, { wch: 15 }];
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+    summaryWs['!cols'] = [{ wch: 28 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, summaryWs, 'P&L Statement');
     
     // --- DETAILED TRANSACTIONS SHEET ---
     const detailData = [];
@@ -1289,37 +1615,39 @@ function downloadPDF(transactions, fromDate, toDate, incomeCategories, expenseCa
     
     // Title
     doc.setFontSize(18);
-    doc.text('Financial Report - Detailed', 14, 20);
-    
+    doc.text('Profit & Loss Statement', 14, 20);
+
     // Date range
     doc.setFontSize(11);
     doc.text(`Date Range: ${fromDate} to ${toDate}`, 14, 30);
-    
-    // Sort transactions by ID to ensure correct order
-    const sortedTransactions = [...transactions].sort((a, b) => a.id - b.id);
-    
-    // Calculate summary
-    let totalIncome = 0;
-    let totalExpense = 0;
-    
-    sortedTransactions.forEach(t => {
-        totalIncome += parseFloat(t.total_income) || 0;
-        totalExpense += parseFloat(t.total_expense) || 0;
-    });
-    
+
+    const { incomeTotals, expenseTotals, totalIncome, totalExpense, sortedTransactions } =
+        buildPnlTotals(transactions, incomeCategories, expenseCategories);
+
     const currentBalance = sortedTransactions.length > 0 ? parseFloat(sortedTransactions[sortedTransactions.length - 1].closing_balance) : 0;
-    
-    // Summary table
+
+    // P&L table: income section, expense section, then net profit/balance
+    const pnlBody = [
+        ...incomeTotals.map(c => [c.label, c.amount.toFixed(2)]),
+        ['Total Income', totalIncome.toFixed(2)],
+        ...expenseTotals.map(c => [c.label, c.amount.toFixed(2)]),
+        ['Total Expenses', totalExpense.toFixed(2)],
+        ['Net Profit', (totalIncome - totalExpense).toFixed(2)],
+        ['Current Balance', currentBalance.toFixed(2)]
+    ];
+
     doc.autoTable({
         startY: 40,
-        head: [['Summary', 'Amount (Rs.)']],
-        body: [
-            ['Total Income', totalIncome.toFixed(2)],
-            ['Total Expenses', totalExpense.toFixed(2)],
-            ['Current Balance', currentBalance.toFixed(2)]
-        ],
+        head: [['P&L Statement', 'Amount (Rs.)']],
+        body: pnlBody,
         theme: 'grid',
-        headStyles: { fillColor: [59, 130, 246] }
+        headStyles: { fillColor: [59, 130, 246] },
+        didParseCell: (data) => {
+            const label = data.row.raw[0];
+            if (['Total Income', 'Total Expenses', 'Net Profit', 'Current Balance'].includes(label)) {
+                data.cell.styles.fontStyle = 'bold';
+            }
+        }
     });
     
     // Prepare detailed table data

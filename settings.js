@@ -14,81 +14,157 @@ document.addEventListener('DOMContentLoaded', function() {
     loadAllSettings();
 });
 
-let lowBalanceThresholdId = null;
+const LOW_BALANCE_THRESHOLD_KEY = 'low_balance_threshold';
+let lowBalanceThresholdLoaded = false;
 
 const FEATURE_FLAGS = [
     { key_id: 'feature_created_by_tracking', label: 'Track who created/edited transactions' },
     { key_id: 'feature_audit_log', label: 'Audit Log Page' },
-    { key_id: 'feature_receipts', label: 'Receipt Attachments' }
+    { key_id: 'feature_receipts', label: 'Receipt Attachments' },
+    { key_id: 'feature_vendor_tracking', label: 'Vendor/Party Tracking' }
 ];
+
+// Pending toggle changes, keyed by setting id, not applied until "Save Features" is clicked
+let pendingFeatureChanges = {};
 
 async function loadAllSettings() {
     try {
-        const res = await fetch('/api/settings', { credentials: 'include' });
-        if (!res.ok) throw new Error('Failed to load settings');
-        const items = await res.json();
+        const [settingsRes, appConfigRes] = await Promise.all([
+            fetch('/api/settings', { credentials: 'include' }),
+            fetch('/api/app-config', { credentials: 'include' })
+        ]);
+        if (!settingsRes.ok) throw new Error('Failed to load settings');
+        const settings = await settingsRes.json();
+        const appConfig = appConfigRes.ok ? await appConfigRes.json() : [];
+        const items = settings.concat(appConfig);
 
         renderList('employee', items.filter(i => i.type === 'employee'), 'employeeList');
         renderList('income_category', items.filter(i => i.type === 'income_category'), 'incomeCategoryList');
         renderList('expense_category', items.filter(i => i.type === 'expense_category'), 'expenseCategoryList');
 
-        const thresholdSetting = items.find(i => i.type === 'app_config' && i.key_id === 'low_balance_threshold');
+        const thresholdSetting = items.find(i => i.type === 'app_config' && i.key_id === LOW_BALANCE_THRESHOLD_KEY);
         if (thresholdSetting) {
-            lowBalanceThresholdId = thresholdSetting.id;
-            document.getElementById('lowBalanceThreshold').value = thresholdSetting.salary_amount;
+            lowBalanceThresholdLoaded = true;
+            document.getElementById('lowBalanceThreshold').value = thresholdSetting.value;
         }
 
         renderFeatureToggles(items.filter(i => i.type === 'app_config'));
+        loadRecurringTemplatesList();
     } catch (e) {
         console.error(e);
     }
 }
 
+async function loadRecurringTemplatesList() {
+    const ul = document.getElementById('recurringTemplatesList');
+    try {
+        const res = await fetch('/api/recurring-templates', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load templates');
+        const templates = await res.json();
+
+        if (templates.length === 0) {
+            ul.innerHTML = '<li class="empty-msg">No templates saved yet</li>';
+            return;
+        }
+
+        ul.innerHTML = templates.map(t => {
+            const dueText = t.day_of_month ? ` - due around day ${t.day_of_month}` : '';
+            const lastAppliedText = t.last_applied_month ? ` - last used ${t.last_applied_month}` : ' - never used yet';
+            return `
+            <li>
+                <span><span class="item-label">${escapeHtml(t.label)}</span><span class="item-key">${escapeHtml(dueText + lastAppliedText)}</span></span>
+                <span class="item-actions">
+                    <button class="btn-del" data-id="${t.id}" data-label="${t.label.replace(/"/g, '&quot;')}">🗑️</button>
+                </span>
+            </li>`;
+        }).join('');
+
+        ul.querySelectorAll('.btn-del').forEach(btn => {
+            btn.addEventListener('click', () => deleteRecurringTemplate(btn.dataset.id, btn.dataset.label));
+        });
+    } catch (e) {
+        console.error(e);
+        ul.innerHTML = '<li class="empty-msg">Error loading templates</li>';
+    }
+}
+
+async function deleteRecurringTemplate(id, label) {
+    if (!confirm(`Delete template "${label}"? This cannot be undone.`)) return;
+    try {
+        const res = await fetch(`/api/recurring-templates/${id}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Failed to delete template');
+            return;
+        }
+        await loadRecurringTemplatesList();
+    } catch (e) {
+        console.error(e);
+        alert('Error deleting template');
+    }
+}
+
 function renderFeatureToggles(appConfigItems) {
+    pendingFeatureChanges = {};
+    document.getElementById('unsavedFeaturesNote').style.display = 'none';
+
     const ul = document.getElementById('featureTogglesList');
     ul.innerHTML = FEATURE_FLAGS.map(flag => {
         const item = appConfigItems.find(i => i.key_id === flag.key_id);
-        const enabled = item ? Number(item.salary_amount) !== 0 : true;
+        const enabled = item ? Number(item.value) !== 0 : true;
         return `
-        <li>
+        <li id="feature-row-${flag.key_id}">
             <span class="item-label">${escapeHtml(flag.label)}</span>
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                <input type="checkbox" data-id="${item ? item.id : ''}" data-key="${flag.key_id}" ${enabled ? 'checked' : ''} onchange="toggleFeatureFlag(this)">
-                ${enabled ? 'On' : 'Off'}
+            <label class="toggle-switch">
+                <input type="checkbox" data-key="${flag.key_id}" ${enabled ? 'checked' : ''} onchange="markFeatureDirty(this)">
+                <span class="toggle-slider"></span>
             </label>
         </li>`;
     }).join('');
 
     const auditLogItem = appConfigItems.find(i => i.key_id === 'feature_audit_log');
-    const auditLogEnabled = auditLogItem ? Number(auditLogItem.salary_amount) !== 0 : true;
+    const auditLogEnabled = auditLogItem ? Number(auditLogItem.value) !== 0 : true;
     document.getElementById('auditLogLink').style.display = auditLogEnabled ? '' : 'none';
 }
 
-async function toggleFeatureFlag(checkbox) {
-    const id = checkbox.dataset.id;
-    if (!id) {
-        alert('This feature flag was not found in settings yet. Please refresh and try again.');
-        checkbox.checked = !checkbox.checked;
+// Record the toggle's new state locally - no network call, nothing takes effect until Save is clicked
+function markFeatureDirty(checkbox) {
+    const keyId = checkbox.dataset.key;
+    pendingFeatureChanges[keyId] = checkbox.checked ? 1 : 0;
+
+    const row = document.getElementById(`feature-row-${keyId}`);
+    if (row) row.classList.add('dirty');
+    document.getElementById('unsavedFeaturesNote').style.display = '';
+}
+
+async function saveFeatureToggles() {
+    const keyIds = Object.keys(pendingFeatureChanges);
+    if (keyIds.length === 0) {
+        alert('No changes to save');
         return;
     }
     try {
-        const res = await fetch(`/api/settings/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ salary_amount: checkbox.checked ? 1 : 0 })
-        });
-        if (!res.ok) {
-            const data = await res.json();
-            alert(data.error || 'Failed to update feature');
-            checkbox.checked = !checkbox.checked;
-            return;
+        for (const keyId of keyIds) {
+            const res = await fetch(`/api/app-config/${keyId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ value: pendingFeatureChanges[keyId] })
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Failed to save one or more features');
+                return;
+            }
         }
+        alert('Features saved!');
         await loadAllSettings();
     } catch (e) {
         console.error(e);
-        alert('Error updating feature');
-        checkbox.checked = !checkbox.checked;
+        alert('Error saving features');
     }
 }
 
@@ -98,16 +174,16 @@ async function saveLowBalanceThreshold() {
         alert('Please enter a valid non-negative amount');
         return;
     }
-    if (!lowBalanceThresholdId) {
+    if (!lowBalanceThresholdLoaded) {
         alert('Threshold setting not loaded yet, please refresh and try again');
         return;
     }
     try {
-        const res = await fetch(`/api/settings/${lowBalanceThresholdId}`, {
+        const res = await fetch(`/api/app-config/${LOW_BALANCE_THRESHOLD_KEY}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ salary_amount: value })
+            body: JSON.stringify({ value })
         });
         if (res.ok) {
             alert('Low balance threshold saved!');
@@ -132,10 +208,16 @@ function renderList(type, items, containerId) {
         if (type === 'employee' && item.salary_amount > 0) {
             salaryDisplay = ` - <span style="color: #047857; font-weight: 600;">₹${parseFloat(item.salary_amount).toFixed(2)}/month</span>`;
         }
+        const budgetInput = type === 'expense_category' ? `
+            <input type="number" class="budget-input" data-id="${item.id}" placeholder="Budget ₹/month" min="0" step="0.01"
+                value="${item.budget_amount || ''}" style="width:110px; padding:4px 8px; border:1px solid #e2e8f0; border-radius:6px; font-size:0.85em;"
+                onchange="saveCategoryBudget(this)">
+        ` : '';
         return `
         <li>
             <span><span class="item-label">${escapeHtml(item.label)}</span><span class="item-key">(${escapeHtml(item.key_id)})</span>${salaryDisplay}</span>
             <span class="item-actions">
+                ${budgetInput}
                 <button class="btn-edit" data-id="${item.id}" data-label="${item.label.replace(/"/g, '&quot;')}" data-salary="${item.salary_amount || 0}">✏️</button>
                 <button class="btn-del" data-id="${item.id}" data-label="${item.label.replace(/"/g, '&quot;')}">🗑️</button>
             </span>
@@ -148,6 +230,25 @@ function renderList(type, items, containerId) {
     ul.querySelectorAll('.btn-del').forEach(btn => {
         btn.addEventListener('click', () => deleteItem(btn.dataset.id, btn.dataset.label));
     });
+}
+
+async function saveCategoryBudget(input) {
+    const value = parseFloat(input.value) || 0;
+    try {
+        const res = await fetch(`/api/settings/${input.dataset.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ budget_amount: value })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Failed to save budget');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error saving budget');
+    }
 }
 
 function generateKeyId(label) {

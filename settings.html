@@ -29,6 +29,18 @@
         .btn-del:hover { background: #dc2626; }
         .empty-msg { color: #94a3b8; text-align: center; padding: 20px; font-style: italic; }
         .header-actions { display: flex; gap: 10px; }
+
+        /* Toggle switch for feature flags */
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; inset: 0; background-color: #cbd5e1; border-radius: 24px; transition: background-color 0.2s; }
+        .toggle-slider::before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: transform 0.2s; }
+        .toggle-switch input:checked + .toggle-slider { background-color: #10b981; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+        .toggle-switch.dirty + .toggle-label, .items-list li.dirty { border-color: #f59e0b; background: #fffbeb; }
+        .features-footer-row { display: flex; align-items: center; margin-top: 15px; flex-wrap: wrap; gap: 10px; }
+        .save-features-row { align-items: center; margin-bottom: 0; margin-left: auto; }
+        .save-features-row .unsaved-note { color: #f59e0b; font-size: 0.85em; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -46,7 +58,13 @@
             <div class="settings-section">
                 <h2>🧩 Features</h2>
                 <ul class="items-list" id="featureTogglesList"></ul>
-                <a href="audit-log.html" class="btn btn-secondary" id="auditLogLink" style="display:none; margin-top: 10px;">📜 View Audit Log</a>
+                <div class="features-footer-row">
+                    <a href="audit-log.html" class="btn btn-secondary" id="auditLogLink" style="display:none;">📜 View Audit Log</a>
+                    <div class="add-form save-features-row">
+                        <span class="unsaved-note" id="unsavedFeaturesNote" style="display:none;">You have unsaved changes</span>
+                        <button onclick="saveFeatureToggles()">💾 Save Features</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Alerts Section -->
@@ -57,6 +75,13 @@
                     <button onclick="saveLowBalanceThreshold()">💾 Save</button>
                 </div>
                 <p style="color:#64748b; font-size:0.9em; margin-top:-10px;">The dashboard shows a warning banner when the current balance drops below this amount.</p>
+            </div>
+
+            <!-- Recurring Templates Section -->
+            <div class="settings-section">
+                <h2>🔁 Recurring Templates</h2>
+                <p style="color:#64748b; font-size:0.9em; margin-top:-10px; margin-bottom:15px;">Saved from the "+ New Entry" form. Remove any you no longer need.</p>
+                <ul class="items-list" id="recurringTemplatesList"></ul>
             </div>
 
             <!-- Employees Section -->

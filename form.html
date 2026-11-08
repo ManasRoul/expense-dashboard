@@ -254,6 +254,17 @@
                 </div>
             </div>
 
+            <!-- Recurring Templates Section -->
+            <div class="section">
+                <h2>🔁 Recurring Templates</h2>
+                <div class="form-group" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <select id="templateSelect" onchange="loadTemplateIntoForm()" style="flex:1; min-width:200px; padding:10px; border:2px solid #e2e8f0; border-radius:8px;">
+                        <option value="">📂 Load a saved template...</option>
+                    </select>
+                    <button type="button" class="btn btn-secondary" onclick="saveAsTemplate()">💾 Save as Template</button>
+                </div>
+            </div>
+
             <!-- Action Buttons -->
             <div class="button-group">
                 <button type="button" class="btn btn-calculate" onclick="calculateTotal()">Calculate Total</button>

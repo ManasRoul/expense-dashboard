@@ -1,3 +1,16 @@
+// Escape untrusted text (comments) before inserting into innerHTML text content
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
+// Escape untrusted text for use inside an HTML attribute value (e.g. title="...") -
+// escapeHtml() alone doesn't neutralize quotes, which matter in attribute context.
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Category labels and icons - will be loaded dynamically from settings
 let incomeLabels = {};
 let expenseLabels = {};
@@ -306,7 +319,8 @@ async function showCategoryDetails(category, type, categoryName) {
                         return entry;
                     }).join(' | ');
                 }
-                commentCell = `<td title="${displayComment}">${displayComment ? displayComment.substring(0, 40) + (displayComment.length > 40 ? '...' : '') : '-'}</td>`;
+                const truncated = displayComment ? displayComment.substring(0, 40) + (displayComment.length > 40 ? '...' : '') : '-';
+                commentCell = `<td title="${escapeAttr(displayComment)}">${escapeHtml(truncated)}</td>`;
             }
             
             tableHTML += `

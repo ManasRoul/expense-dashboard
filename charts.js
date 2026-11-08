@@ -22,7 +22,7 @@ async function loadCategoryKeys() {
         console.error('Error loading categories:', err);
         // Fallback to hardcoded lists if API fails
         INCOME_KEYS = ['room_rent','mattress_charge','travel_cab','kitchen_facility','clean_charge','misc_receipt'];
-        EXPENSE_KEYS = ['brokerage','salary','room_cleaning_charge','generator_maintenance','hotel_stationary','hotel_cleaning_sanitation','rent_taxes','tv_recharge','camera_wifi','plumbing_maintenance','electricity_maintenance','electricity_bill','staff_fooding','laundry','owner_kitchen_cab','office_stationary','misc_expenses'];
+        EXPENSE_KEYS = ['brokerage','salary','room_cleaning_charge','generator_maintenance','hotel_stationary','hotel_cleaning_sanitation','rent_taxes','tv_recharge','recharge','plumbing_maintenance','electricity_maintenance','electricity_bill','staff_fooding','laundry','owner_kitchen_cab','office_stationary','misc_expenses'];
     }
 }
 

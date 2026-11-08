@@ -17,6 +17,7 @@
                 <button onclick="openImportModal()" class="btn btn-download">📤 Import</button>
                 <a href="charts.html" class="btn btn-info">📈 Charts</a>
                 <a href="categories.html" class="btn btn-info">📊 Category View</a>
+                <a href="vendors.html" class="btn btn-info" id="vendorsNavLink">🤝 Vendors</a>
                 <a href="salary.html" class="btn btn-info">💰 Salary</a>
                 <a href="form.html" class="btn btn-primary">+ New Entry</a>
                 <button onclick="openTrashModal()" class="btn btn-secondary" id="trashBtn" style="display:none;">🗑️ Trash</button>
@@ -126,6 +127,11 @@
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="pagination-container" style="display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 12px;">
+                <button class="btn btn-secondary" id="txPrevPageBtn" onclick="goToTransactionsPage(-1)">&laquo; Prev</button>
+                <span id="txPageIndicator">Page 1 of 1</span>
+                <button class="btn btn-secondary" id="txNextPageBtn" onclick="goToTransactionsPage(1)">Next &raquo;</button>
             </div>
         </div>
 

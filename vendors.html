@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script>if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark-mode');</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendors - Financial Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="dark-mode.css">
+    <style>
+        .vendors-container { max-width: 900px; margin: 20px auto; padding: 0 20px; }
+        .search-bar { display: flex; align-items: center; background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); padding: 15px 20px; margin-bottom: 25px; }
+        .search-bar input { flex: 1; padding: 10px 14px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.95em; }
+        .search-bar input:focus { outline: none; border-color: #3b82f6; }
+        .vendors-card { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+        .rank-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; background: #eff6ff; color: #1e40af; font-weight: 700; font-size: 0.85em; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>🤝 Vendors / Parties</h1>
+            <div class="header-actions">
+                <a href="dashboard.html" class="btn btn-secondary">← Dashboard</a>
+            </div>
+        </header>
+
+        <div class="vendors-container">
+            <div class="search-bar">
+                <input type="text" id="vendorSearch" placeholder="🔍 Search vendor/party name..." oninput="renderVendors()">
+            </div>
+            <div class="vendors-card">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Vendor/Party</th>
+                                <th>Total Paid</th>
+                                <th>Payments</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vendorsBody">
+                            <tr><td colspan="4" class="loading-message">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="auth.js"></script>
+    <script src="vendors.js"></script>
+</body>
+</html>

@@ -1,24 +1,48 @@
+// Escape untrusted text (comments, template/employee labels) before inserting as HTML text content
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
+// Escape untrusted text for use inside an HTML attribute value (e.g. value="...") - comments
+// are free text from any logged-in user and get re-rendered when editing/loading a template.
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Category definitions - loaded dynamically from settings API
 let incomeCategories = [];
 let expenseCategories = [];
 let employeeList = [];
 let allSettingsItems = [];
+let recurringTemplates = [];
+let appliedFromTemplateId = null;
+let vendorTrackingEnabled = true;
 
 // Load settings from API
 async function loadSettings() {
     try {
-        const res = await fetch('/api/settings', { credentials: 'include' });
-        if (!res.ok) throw new Error('Failed to load settings');
-        const items = await res.json();
+        const [settingsRes, appConfigRes] = await Promise.all([
+            fetch('/api/settings', { credentials: 'include' }),
+            fetch('/api/app-config', { credentials: 'include' })
+        ]);
+        if (!settingsRes.ok) throw new Error('Failed to load settings');
+        const settings = await settingsRes.json();
+        const appConfig = appConfigRes.ok ? await appConfigRes.json() : [];
+        const items = settings.concat(appConfig);
         allSettingsItems = items;
         incomeCategories = items.filter(i => i.type === 'income_category').map(i => ({ id: i.key_id, label: i.label }));
         expenseCategories = items.filter(i => i.type === 'expense_category').map(i => ({ id: i.key_id, label: i.label }));
         employeeList = items.filter(i => i.type === 'employee').map(i => ({ id: i.key_id, label: i.label }));
 
         const receiptsFlag = items.find(i => i.type === 'app_config' && i.key_id === 'feature_receipts');
-        const receiptsEnabled = receiptsFlag ? Number(receiptsFlag.salary_amount) !== 0 : true;
+        const receiptsEnabled = receiptsFlag ? Number(receiptsFlag.value) !== 0 : true;
         const receiptSection = document.getElementById('receiptUploadSection');
         if (receiptSection) receiptSection.style.display = receiptsEnabled ? '' : 'none';
+
+        const vendorFlag = items.find(i => i.type === 'app_config' && i.key_id === 'feature_vendor_tracking');
+        vendorTrackingEnabled = vendorFlag ? Number(vendorFlag.value) !== 0 : true;
     } catch (e) {
         // Fallback to defaults if API fails
         incomeCategories = [
@@ -72,9 +96,89 @@ document.addEventListener('DOMContentLoaded', async function() {
     } else {
         loadLastClosingBalance();
     }
-    
+
+    loadRecurringTemplates();
     setupFormSubmit();
 });
+
+// --- RECURRING TEMPLATES ---
+async function loadRecurringTemplates() {
+    const select = document.getElementById('templateSelect');
+    if (!select) return;
+    try {
+        const res = await fetch('/api/recurring-templates', { credentials: 'include' });
+        if (!res.ok) return;
+        recurringTemplates = await res.json();
+        select.innerHTML = '<option value="">📂 Load a saved template...</option>' +
+            recurringTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+    } catch (error) {
+        console.error('Error loading recurring templates:', error);
+    }
+}
+
+async function saveAsTemplate() {
+    const label = prompt('Name this template (e.g. "Monthly Rent"):');
+    if (!label) return;
+    const dayInput = prompt('Roughly which day of the month is this due? (1-31, optional - leave blank to skip reminders)');
+    const dayOfMonth = dayInput && dayInput.trim() ? parseInt(dayInput, 10) : null;
+    if (dayOfMonth !== null && (isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31)) {
+        alert('Day of month must be a number between 1 and 31');
+        return;
+    }
+
+    const payload = buildFormPayload();
+    try {
+        const res = await fetch('/api/recurring-templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ label, payload, dayOfMonth })
+        });
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.error || 'Failed to save template');
+            return;
+        }
+        alert('Template saved!');
+        await loadRecurringTemplates();
+    } catch (error) {
+        console.error('Error saving template:', error);
+        alert('Error saving template. Please try again.');
+    }
+}
+
+function loadTemplateIntoForm() {
+    const select = document.getElementById('templateSelect');
+    const templateId = select.value;
+    if (!templateId) return;
+
+    const template = recurringTemplates.find(t => t.id == templateId);
+    if (!template) return;
+
+    const payload = template.payload;
+    document.getElementById('openingBalance').value = payload.openingBalance || 0;
+
+    // Reuse the same per-category pre-fill path the edit-mode loader already has -
+    // it reads from a transaction-shaped object, so adapt the template's {income, expense} shape to it.
+    const fakeTransaction = {};
+    incomeCategories.concat(expenseCategories).forEach(category => {
+        const snakeCaseId = category.id.replace(/([A-Z])/g, '_$1').toLowerCase();
+        const catData = payload.income[category.id] || payload.expense[category.id];
+        if (catData) {
+            fakeTransaction[snakeCaseId] = catData.amount || 0;
+            fakeTransaction[`${snakeCaseId}_method`] = catData.method || '';
+            fakeTransaction[`${snakeCaseId}_comment`] = catData.comment || '';
+            fakeTransaction[`${snakeCaseId}_vendor`] = catData.vendor || '';
+        }
+    });
+
+    incomeCategories.forEach(category => loadCategoryData(category.id, fakeTransaction));
+    expenseCategories.forEach(category => loadCategoryData(category.id, fakeTransaction));
+    calculateTotal();
+
+    appliedFromTemplateId = templateId;
+    select.value = '';
+}
 
 // Load last closing balance as opening balance
 async function loadLastClosingBalance() {
@@ -192,7 +296,12 @@ function loadCategoryData(categoryId, transaction) {
     const amount = parseFloat(transaction[amountField]) || 0;
     const method = transaction[methodField] || '';
     const comment = transaction[commentField] || '';
-    
+
+    const vendorInput = document.getElementById(`vendor-${categoryId}`);
+    if (vendorInput) {
+        vendorInput.value = transaction[`${amountField}_vendor`] || '';
+    }
+
     // Try to find container - could be entries-roomRent (camelCase) or entries-room_rent (snake_case)
     let container = document.getElementById(`entries-${categoryId}`);
     if (!container) {
@@ -264,7 +373,7 @@ function loadCategoryData(categoryId, transaction) {
             
             if (isSalary) {
                 const employeeOptions = employeeList.map(e => 
-                    `<option value="${e.label}" ${employeeName === e.label ? 'selected' : ''}>${e.label}</option>`
+                    `<option value="${escapeAttr(e.label)}" ${employeeName === e.label ? 'selected' : ''}>${escapeHtml(e.label)}</option>`
                 ).join('');
                 row.innerHTML = `
                     <select class="employee-select" data-field="employee" onchange="calculateCategoryTotal('${categoryId}')">
@@ -283,8 +392,8 @@ function loadCategoryData(categoryId, transaction) {
                     </select>
                     <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                         value="${entryAmount}" oninput="calculateCategoryTotal('${categoryId}')">
-                    <input type="text" class="comment-input" data-field="comment" placeholder="Add note (optional)" 
-                        value="${actualComment}">
+                    <input type="text" class="comment-input" data-field="comment" placeholder="Add note (optional)"
+                        value="${escapeAttr(actualComment)}">
                     ${index > 0 ? `<button type="button" class="btn-remove-entry" onclick="removeEntry('${categoryId}', ${index})">×</button>` : '<span></span>'}
                 `;
             } else {
@@ -296,8 +405,8 @@ function loadCategoryData(categoryId, transaction) {
                     </select>
                     <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                         value="${entryAmount}" oninput="calculateCategoryTotal('${categoryId}')">
-                    <input type="text" class="comment-input" data-field="comment" placeholder="Add comment (optional)" 
-                        value="${entryComment}">
+                    <input type="text" class="comment-input" data-field="comment" placeholder="Add comment (optional)"
+                        value="${escapeAttr(entryComment)}">
                     ${index > 0 ? `<button type="button" class="btn-remove-entry" onclick="removeEntry('${categoryId}', ${index})">×</button>` : '<span></span>'}
                 `;
             }
@@ -340,11 +449,17 @@ function createCategorySection(category, type) {
     section.className = 'category-section';
     section.id = `section-${category.id}`;
 
+    const vendorInputHTML = (category.id === 'salary' || !vendorTrackingEnabled) ? '' : `
+        <input type="text" class="vendor-input" id="vendor-${category.id}" placeholder="Vendor/Party (optional)"
+            style="margin: 6px 0 10px; width: 100%; padding: 8px 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.9em;">
+    `;
+
     section.innerHTML = `
         <div class="category-header">
             <label><span class="badge-bullet"></span>${category.label}</label>
             <span class="category-total" id="total-${category.id}">₹0.00</span>
         </div>
+        ${vendorInputHTML}
         <div class="entries-container" id="entries-${category.id}">
             ${createEntryRow(category.id, 0)}
         </div>
@@ -362,7 +477,7 @@ function createEntryRow(categoryId, index) {
     const isSalary = categoryId === 'salary';
     
     if (isSalary) {
-        const employeeOptions = employeeList.map(e => `<option value="${e.label}">${e.label}</option>`).join('');
+        const employeeOptions = employeeList.map(e => `<option value="${escapeAttr(e.label)}">${escapeHtml(e.label)}</option>`).join('');
         return `
             <div class="entry-row salary-entry" data-category="${categoryId}" data-index="${index}">
                 <select class="employee-select" data-field="employee" onchange="calculateCategoryTotal('${categoryId}')">
@@ -573,8 +688,11 @@ function getCategoryData(categoryId) {
     
     if (!container) {
         console.error(`Container not found for category: ${categoryId}`);
-        return { amount: 0, method: '', comment: '' };
+        return { amount: 0, method: '', comment: '', vendor: '' };
     }
+
+    const vendorInput = document.getElementById(`vendor-${categoryId}`);
+    const vendor = vendorInput ? vendorInput.value.trim() : '';
     
     const rows = container.querySelectorAll('.entry-row');
     const isSalary = categoryId === 'salary';
@@ -615,14 +733,51 @@ function getCategoryData(categoryId) {
     return {
         amount: totalAmount,
         method: firstMethod,
-        comment: details.join(' | ')
+        comment: details.join(' | '),
+        vendor
+    };
+}
+
+// Build the {openingBalance, entryDate, income, expense, closingBalance} payload from the
+// current form state - shared by the submit handler and "Save as Template".
+function buildFormPayload() {
+    const income = {};
+    incomeCategories.forEach(category => {
+        const data = getCategoryData(category.id);
+        income[category.id] = {
+            amount: data.amount,
+            method: data.method || '',
+            comment: data.comment,
+            vendor: data.vendor || ''
+        };
+    });
+    income.totalIncome = parseFloat(document.getElementById('totalIncome').value) || 0;
+
+    const expense = {};
+    expenseCategories.forEach(category => {
+        const data = getCategoryData(category.id);
+        expense[category.id] = {
+            amount: data.amount,
+            method: data.method || '',
+            comment: data.comment,
+            vendor: data.vendor || ''
+        };
+    });
+    expense.totalExpense = parseFloat(document.getElementById('totalExpense').value) || 0;
+
+    return {
+        entryDate: document.getElementById('entryDate').value,
+        openingBalance: parseFloat(document.getElementById('openingBalance').value) || 0,
+        income: income,
+        expense: expense,
+        closingBalance: parseFloat(document.getElementById('closingBalance').value) || 0
     };
 }
 
 // Setup form submit handler
 function setupFormSubmit() {
     const form = document.getElementById('financialForm');
-    
+
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -630,38 +785,7 @@ function setupFormSubmit() {
         const urlParams = new URLSearchParams(window.location.search);
         const editId = urlParams.get('edit');
 
-        // Build income object
-        const income = {};
-        incomeCategories.forEach(category => {
-            const data = getCategoryData(category.id);
-            income[category.id] = {
-                amount: data.amount,
-                method: data.method || '',
-                comment: data.comment
-            };
-        });
-        income.totalIncome = parseFloat(document.getElementById('totalIncome').value) || 0;
-
-        // Build expense object
-        const expense = {};
-        expenseCategories.forEach(category => {
-            const data = getCategoryData(category.id);
-            expense[category.id] = {
-                amount: data.amount,
-                method: data.method || '',
-                comment: data.comment
-            };
-        });
-        expense.totalExpense = parseFloat(document.getElementById('totalExpense').value) || 0;
-
-        // Gather all data in the format the server expects
-        const formData = {
-            entryDate: document.getElementById('entryDate').value,
-            openingBalance: parseFloat(document.getElementById('openingBalance').value) || 0,
-            income: income,
-            expense: expense,
-            closingBalance: parseFloat(document.getElementById('closingBalance').value) || 0
-        };
+        const formData = buildFormPayload();
 
         try {
             let response;
@@ -712,6 +836,11 @@ function setupFormSubmit() {
                         console.error('Error uploading receipts:', receiptError);
                         alert('Transaction saved, but the receipt upload failed. Please try again from the dashboard.');
                     }
+                }
+
+                if (appliedFromTemplateId) {
+                    fetch(`/api/recurring-templates/${appliedFromTemplateId}/mark-applied`, { method: 'POST', credentials: 'include' }).catch(() => {});
+                    appliedFromTemplateId = null;
                 }
 
                 if (editId) {
