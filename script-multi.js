@@ -15,10 +15,19 @@ function escapeAttr(str) {
 let incomeCategories = [];
 let expenseCategories = [];
 let employeeList = [];
+let paymentMethods = [];
 let allSettingsItems = [];
 let recurringTemplates = [];
 let appliedFromTemplateId = null;
 let vendorTrackingEnabled = true;
+
+// Builds <option> tags for the payment-method <select>, from whatever methods
+// are configured in Settings (Cash/UPI by default, plus any the owner added).
+function paymentMethodOptionsHtml(selectedValue) {
+    return paymentMethods.map(m =>
+        `<option value="${escapeAttr(m.id)}" ${selectedValue === m.id ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
+    ).join('');
+}
 
 // Load settings from API
 async function loadSettings() {
@@ -35,6 +44,8 @@ async function loadSettings() {
         incomeCategories = items.filter(i => i.type === 'income_category').map(i => ({ id: i.key_id, label: i.label }));
         expenseCategories = items.filter(i => i.type === 'expense_category').map(i => ({ id: i.key_id, label: i.label }));
         employeeList = items.filter(i => i.type === 'employee').map(i => ({ id: i.key_id, label: i.label }));
+        paymentMethods = items.filter(i => i.type === 'payment_method').map(i => ({ id: i.key_id, label: i.label }));
+        if (paymentMethods.length === 0) paymentMethods = [{ id: 'cash', label: 'Cash' }, { id: 'upi', label: 'UPI' }];
 
         const receiptsFlag = items.find(i => i.type === 'app_config' && i.key_id === 'feature_receipts');
         const receiptsEnabled = receiptsFlag ? Number(receiptsFlag.value) !== 0 : true;
@@ -78,6 +89,7 @@ async function loadSettings() {
             { id: 'kiran', label: 'Kiran' },
             { id: 'purna', label: 'Purna' }
         ];
+        paymentMethods = [{ id: 'cash', label: 'Cash' }, { id: 'upi', label: 'UPI' }];
     }
 }
 
@@ -387,8 +399,7 @@ function loadCategoryData(categoryId, transaction) {
                     </select>
                     <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                         <option value="">Payment</option>
-                        <option value="cash" ${entryMethod === 'cash' ? 'selected' : ''}>Cash</option>
-                        <option value="upi" ${entryMethod === 'upi' ? 'selected' : ''}>UPI</option>
+                        ${paymentMethodOptionsHtml(entryMethod)}
                     </select>
                     <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                         value="${entryAmount}" oninput="calculateCategoryTotal('${categoryId}')">
@@ -400,8 +411,7 @@ function loadCategoryData(categoryId, transaction) {
                 row.innerHTML = `
                     <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                         <option value="">Payment</option>
-                        <option value="cash" ${entryMethod === 'cash' ? 'selected' : ''}>Cash</option>
-                        <option value="upi" ${entryMethod === 'upi' ? 'selected' : ''}>UPI</option>
+                        ${paymentMethodOptionsHtml(entryMethod)}
                     </select>
                     <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                         value="${entryAmount}" oninput="calculateCategoryTotal('${categoryId}')">
@@ -491,8 +501,7 @@ function createEntryRow(categoryId, index) {
                 </select>
                 <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                     <option value="">Payment</option>
-                    <option value="cash" selected>Cash</option>
-                    <option value="upi">UPI</option>
+                    ${paymentMethodOptionsHtml('cash')}
                 </select>
                 <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                     oninput="calculateCategoryTotal('${categoryId}')">
@@ -507,8 +516,7 @@ function createEntryRow(categoryId, index) {
         <div class="entry-row" data-category="${categoryId}" data-index="${index}">
             <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                 <option value="">Payment</option>
-                <option value="cash" selected>Cash</option>
-                <option value="upi">UPI</option>
+                ${paymentMethodOptionsHtml('cash')}
             </select>
             <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                 oninput="calculateCategoryTotal('${categoryId}')">

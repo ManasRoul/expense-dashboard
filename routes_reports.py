@@ -247,6 +247,183 @@ def get_category_totals():
         return jsonify({'error': str(e)}), 500
 
 
+@reports_bp.route('/api/payment-methods/totals', methods=['GET'])
+def get_payment_method_totals():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        placeholder = '%s' if USE_MYSQL else '?'
+
+        methods = execute_query(
+            "SELECT key_id, label, icon FROM settings WHERE type = 'payment_method' AND active = 1 ORDER BY sort_order",
+            fetch=True
+        )
+        if not methods:
+            return jsonify([]), 200
+
+        income_categories = execute_query(
+            "SELECT key_id FROM settings WHERE type = 'income_category' AND active = 1",
+            fetch=True
+        )
+        expense_categories = execute_query(
+            "SELECT key_id FROM settings WHERE type = 'expense_category' AND active = 1",
+            fetch=True
+        )
+        income_fields = [cat['key_id'] for cat in (income_categories or [])]
+        expense_fields = [cat['key_id'] for cat in (expense_categories or [])]
+
+        # Only sum columns that actually exist in transactions (same safety check
+        # used elsewhere in this file for category/vendor totals).
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            try:
+                if USE_MYSQL:
+                    cursor.execute("DESCRIBE transactions")
+                    columns = {row[0] for row in cursor.fetchall()}
+                else:
+                    cursor.execute("PRAGMA table_info(transactions)")
+                    columns = {row[1] for row in cursor.fetchall()}
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
+
+        income_fields = [f for f in income_fields if f in columns and f'{f}_method' in columns]
+        expense_fields = [f for f in expense_fields if f in columns and f'{f}_method' in columns]
+
+        if not income_fields and not expense_fields:
+            return jsonify([]), 200
+
+        # Generalizes get_balances()'s cash/upi CASE WHEN to N methods, in one query
+        # aliased per (field, method) pair - a blank/NULL _method is treated as
+        # 'cash' for backward compatibility with rows saved before payment methods
+        # existed as configurable data.
+        select_parts = []
+        aliases = []  # (alias, method_key, 'income'|'expense')
+        for m in methods:
+            method_key = m['key_id']
+            condition_value = "COALESCE(NULLIF({col}, ''), 'cash')" if method_key == 'cash' else '{col}'
+            for category_type, fields in (('income', income_fields), ('expense', expense_fields)):
+                for f in fields:
+                    alias = f"{f}__{method_key}"
+                    condition = condition_value.format(col=f'{f}_method')
+                    select_parts.append(f"SUM(CASE WHEN {condition} = {placeholder} THEN {f} ELSE 0 END) as {alias}")
+                    aliases.append((alias, method_key, category_type))
+
+        query = f"SELECT {', '.join(select_parts)} FROM transactions WHERE deleted_at IS NULL"
+        values = tuple(method_key for _, method_key, _ in aliases)
+        result = execute_query(query, values, fetch=True, fetchone=True) or {}
+
+        totals = {m['key_id']: {'income': 0.0, 'expense': 0.0} for m in methods}
+        for alias, method_key, category_type in aliases:
+            totals[method_key][category_type] += float(result.get(alias, 0) or 0)
+
+        results = []
+        for m in methods:
+            method_key = m['key_id']
+            income_total = totals[method_key]['income']
+            expense_total = totals[method_key]['expense']
+            results.append({
+                'key_id': method_key,
+                'label': m['label'],
+                'icon': m['icon'],
+                'income': income_total,
+                'expense': expense_total,
+                'net': income_total - expense_total
+            })
+
+        return jsonify(results), 200
+    except Exception as e:
+        print(f"Error calculating payment method totals: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@reports_bp.route('/api/payment-methods/<key_id>/transactions', methods=['GET'])
+def get_payment_method_transactions(key_id):
+    try:
+        if 'user_id' not in session:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        placeholder = '%s' if USE_MYSQL else '?'
+
+        method = execute_query(
+            f"SELECT key_id FROM settings WHERE type = 'payment_method' AND key_id = {placeholder} AND active = 1",
+            (key_id,), fetch=True, fetchone=True
+        )
+        if not method:
+            return jsonify({'error': 'Unknown payment method'}), 404
+
+        categories = execute_query(
+            "SELECT key_id, label, type FROM settings WHERE type IN ('income_category', 'expense_category') AND active = 1 ORDER BY type, sort_order",
+            fetch=True
+        )
+
+        # Only use categories whose amount/method columns actually exist (same safety check as get_category_totals)
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            try:
+                if USE_MYSQL:
+                    cursor.execute("DESCRIBE transactions")
+                    columns = {row[0] for row in cursor.fetchall()}
+                else:
+                    cursor.execute("PRAGMA table_info(transactions)")
+                    columns = {row[1] for row in cursor.fetchall()}
+            finally:
+                cursor.close()
+        finally:
+            conn.close()
+
+        # A blank/NULL _method is treated as 'cash' for backward compatibility with
+        # rows saved before payment methods existed as configurable data (same as
+        # get_balances()/get_payment_method_totals()).
+        is_default = key_id == 'cash'
+        subqueries = []
+        values = []
+        for cat in (categories or []):
+            f = cat['key_id']
+            method_col = f'{f}_method'
+            if f not in columns or method_col not in columns:
+                continue
+            comment_expr = f'{f}_comment' if f'{f}_comment' in columns else "''"
+            vendor_expr = f'{f}_vendor' if f'{f}_vendor' in columns else "''"
+            cat_type = 'income' if cat['type'] == 'income_category' else 'expense'
+            condition = f"COALESCE(NULLIF({method_col}, ''), 'cash') = {placeholder}" if is_default else f"{method_col} = {placeholder}"
+            label_escaped = cat['label'].replace("'", "''")
+            subqueries.append(
+                f"SELECT id, date, '{label_escaped}' as category, '{cat_type}' as type, {f} as amount, "
+                f"{comment_expr} as comment, {vendor_expr} as vendor FROM transactions "
+                f"WHERE deleted_at IS NULL AND {condition} AND {f} > 0"
+            )
+            values.append(key_id)
+
+        if not subqueries:
+            return jsonify([]), 200
+
+        union_query = ' UNION ALL '.join(subqueries)
+        # Capped to the most recent 500 matching entries, same spirit as the audit
+        # log's 1000-entry cap - avoids an unbounded result set over a long history.
+        final_query = f"SELECT * FROM ({union_query}) as combined ORDER BY date DESC, id DESC LIMIT 500"
+        results = execute_query(final_query, tuple(values), fetch=True)
+
+        return jsonify([
+            {
+                'date': r['date'],
+                'category': r['category'],
+                'type': r['type'],
+                'amount': float(r['amount'] or 0),
+                'comment': r['comment'] or '',
+                'vendor': r['vendor'] or ''
+            }
+            for r in (results or [])
+        ]), 200
+    except Exception as e:
+        print(f"Error fetching payment method transactions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @reports_bp.route('/api/vendors/totals', methods=['GET'])
 def get_vendor_totals():
     try:

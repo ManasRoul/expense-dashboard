@@ -16,6 +16,7 @@ html.dark-mode .settings-section,
 html.dark-mode .modal-content,
 html.dark-mode .audit-card,
 html.dark-mode .category-card,
+html.dark-mode .categories-section,
 html.dark-mode .employee-section,
 html.dark-mode .month-summary,
 html.dark-mode .month-card-back,
@@ -32,10 +33,29 @@ html.dark-mode .navbar,
 html.dark-mode .summary-card,
 html.dark-mode .month-stat-item,
 html.dark-mode .payment-record,
-html.dark-mode .salary-info-box {
+html.dark-mode .salary-info-box,
+html.dark-mode .month-comparison-card,
+html.dark-mode .vendors-card,
+html.dark-mode .search-bar,
+html.dark-mode .subtitle,
+html.dark-mode .category-section,
+html.dark-mode .login-footer {
     background: #1e293b;
     color: #e2e8f0;
     border-color: #334155;
+}
+
+/* Settings list rows: hover/dirty states set their own light background on
+   top of an already-covered .items-list li, so they need their own override
+   too - otherwise .item-label's light-mode-overridden text color (#cbd5e1)
+   sits on a leftover light background and becomes unreadable. */
+html.dark-mode .items-list li:hover {
+    background: #263548;
+}
+
+html.dark-mode .toggle-switch.dirty + .toggle-label,
+html.dark-mode .items-list li.dirty {
+    background: #422f0a;
 }
 
 html.dark-mode .month-card-front {

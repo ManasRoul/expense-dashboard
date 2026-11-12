@@ -18,6 +18,7 @@
                 <a href="charts.html" class="btn btn-info">📈 Charts</a>
                 <a href="categories.html" class="btn btn-info">📊 Category View</a>
                 <a href="vendors.html" class="btn btn-info" id="vendorsNavLink">🤝 Vendors</a>
+                <a href="payment-methods.html" class="btn btn-info">💳 Payment Methods</a>
                 <a href="salary.html" class="btn btn-info">💰 Salary</a>
                 <a href="form.html" class="btn btn-primary">+ New Entry</a>
                 <button onclick="openTrashModal()" class="btn btn-secondary" id="trashBtn" style="display:none;">🗑️ Trash</button>
@@ -98,8 +99,6 @@
                     </select>
                     <select id="txMethodFilter" class="date-filter-input" onchange="loadRecentTransactions()">
                         <option value="">All Methods</option>
-                        <option value="cash">Cash</option>
-                        <option value="upi">UPI</option>
                     </select>
                     <label for="filterFromDate">From:</label>
                     <input type="date" id="filterFromDate" class="date-filter-input">

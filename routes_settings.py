@@ -45,7 +45,7 @@ def add_setting():
         if not all([setting_type, key_id, label]):
             return jsonify({'error': 'type, key_id, and label are required'}), 400
 
-        if setting_type not in ('employee', 'income_category', 'expense_category'):
+        if setting_type not in ('employee', 'income_category', 'expense_category', 'payment_method'):
             return jsonify({'error': 'Invalid type'}), 400
 
         # key_id ends up unescaped inside ALTER TABLE/SHOW COLUMNS statements

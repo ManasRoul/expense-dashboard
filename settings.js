@@ -41,6 +41,7 @@ async function loadAllSettings() {
         renderList('employee', items.filter(i => i.type === 'employee'), 'employeeList');
         renderList('income_category', items.filter(i => i.type === 'income_category'), 'incomeCategoryList');
         renderList('expense_category', items.filter(i => i.type === 'expense_category'), 'expenseCategoryList');
+        renderList('payment_method', items.filter(i => i.type === 'payment_method'), 'paymentMethodList');
 
         const thresholdSetting = items.find(i => i.type === 'app_config' && i.key_id === LOW_BALANCE_THRESHOLD_KEY);
         if (thresholdSetting) {
@@ -266,6 +267,7 @@ async function addItem(type) {
     let inputId, label;
     if (type === 'employee') inputId = 'newEmployeeName';
     else if (type === 'income_category') inputId = 'newIncomeName';
+    else if (type === 'payment_method') inputId = 'newPaymentMethodName';
     else inputId = 'newExpenseName';
 
     const input = document.getElementById(inputId);

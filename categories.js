@@ -16,6 +16,15 @@ let incomeLabels = {};
 let expenseLabels = {};
 let categoryMetadata = [];
 
+// Renders a payment method as a colored badge, looking up its configured label
+// from Settings (falls back to the raw stored value for an unknown/removed method).
+function methodBadgeHtml(method) {
+    if (!method) return '<span class="method-badge badge-none">-</span>';
+    const meta = categoryMetadata.find(c => c.type === 'payment_method' && c.key_id === method);
+    const cls = method === 'cash' ? 'badge-cash' : method === 'upi' ? 'badge-upi' : 'badge-other';
+    return `<span class="method-badge ${cls}">${escapeHtml(meta ? meta.label : method)}</span>`;
+}
+
 // Load category metadata on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadCategoryMetadata().then(() => {
@@ -294,9 +303,7 @@ async function showCategoryDetails(category, type, categoryName) {
         `;
         
         filteredTransactions.forEach(t => {
-            const methodBadge = t.method === 'cash' ? '<span class="method-badge badge-cash">Cash</span>' :
-                              t.method === 'upi' ? '<span class="method-badge badge-upi">UPI</span>' :
-                              '<span class="method-badge badge-none">-</span>';
+            const methodBadge = methodBadgeHtml(t.method);
             
             let commentCell = '';
             if (hasComments) {

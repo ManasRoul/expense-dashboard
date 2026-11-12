@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadCategoryMetadata().then(() => {
         populateCategoryFilter();
+        populateMethodFilter();
         loadDashboardData();
         loadRecentTransactions();
         loadMonthComparison();
@@ -231,6 +232,33 @@ function populateCategoryFilter() {
     if ([...select.options].some(o => o.value === previousValue)) {
         select.value = previousValue;
     }
+}
+
+function populateMethodFilter() {
+    const select = document.getElementById('txMethodFilter');
+    if (!select) return;
+    const previousValue = select.value;
+    select.innerHTML = '<option value="">All Methods</option>';
+    categoryMetadata
+        .filter(c => c.type === 'payment_method')
+        .forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.key_id;
+            opt.textContent = `${c.icon || ''} ${c.label}`.trim();
+            select.appendChild(opt);
+        });
+    if ([...select.options].some(o => o.value === previousValue)) {
+        select.value = previousValue;
+    }
+}
+
+// Renders a payment method as a colored badge, looking up its configured label
+// from Settings (falls back to the raw stored value for an unknown/removed method).
+function methodBadgeHtml(method) {
+    if (!method || method === '-') return '-';
+    const meta = categoryMetadata.find(c => c.type === 'payment_method' && c.key_id === method);
+    const cls = method === 'cash' ? 'badge-cash' : method === 'upi' ? 'badge-upi' : 'badge-other';
+    return `<span class="badge ${cls}">${escapeHtml(meta ? meta.label : method)}</span>`;
 }
 
 // Load recent transactions
@@ -596,8 +624,7 @@ function viewTransaction(id) {
         const comment = transaction[item.comment] || '';
         const vendor = item.vendor ? (transaction[item.vendor] || '') : '';
         if (amount > 0) {
-            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' :
-                              method === 'upi' ? '<span class="badge badge-upi">UPI</span>' : '-';
+            const methodBadge = methodBadgeHtml(method);
 
             // Format comment - check if it contains multiple entries (separated by |)
             let commentHTML;
@@ -621,8 +648,7 @@ function viewTransaction(id) {
         const comment = transaction[item.comment] || '';
         const vendor = item.vendor ? (transaction[item.vendor] || '') : '';
         if (amount > 0) {
-            const methodBadge = method === 'cash' ? '<span class="badge badge-cash">Cash</span>' :
-                              method === 'upi' ? '<span class="badge badge-upi">UPI</span>' : '-';
+            const methodBadge = methodBadgeHtml(method);
 
             // Format comment - check if it contains multiple entries (separated by |)
             let commentHTML;

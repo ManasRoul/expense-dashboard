@@ -114,6 +114,17 @@
                 </div>
                 <ul class="items-list" id="expenseCategoryList"></ul>
             </div>
+
+            <!-- Payment Methods Section -->
+            <div class="settings-section">
+                <h2>💳 Payment Methods</h2>
+                <p style="color:#64748b; font-size:0.9em; margin-top:-10px; margin-bottom:15px;">Cash and UPI come built in - add more (e.g. Card, Bank Transfer) if you need them.</p>
+                <div class="add-form">
+                    <input type="text" id="newPaymentMethodName" placeholder="Method name (e.g. Card)">
+                    <button onclick="addItem('payment_method')">+ Add Payment Method</button>
+                </div>
+                <ul class="items-list" id="paymentMethodList"></ul>
+            </div>
         </div>
     </div>
 

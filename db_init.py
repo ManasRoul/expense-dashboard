@@ -533,6 +533,26 @@ def init_db():
             )
             print(f"Seeded default app_config: {key_id} = {default_value}")
 
+    # Seed default payment methods (Cash/UPI) as settings rows if missing. Runs on every
+    # startup (not just fresh installs) so existing databases - where "cash"/"upi" were
+    # only ever hardcoded in the frontend, never stored as data - get them too, letting
+    # the owner add further methods (e.g. Card, Bank Transfer) the same way as categories.
+    payment_method_defaults = [
+        ('cash', 'Cash', '💵', 1),
+        ('upi', 'UPI', '📱', 2),
+    ]
+    for key_id, label, icon, sort_order in payment_method_defaults:
+        existing_method = execute_query(
+            f"SELECT id FROM settings WHERE type = 'payment_method' AND key_id = {placeholder}",
+            (key_id,), fetch=True, fetchone=True
+        )
+        if not existing_method:
+            execute_query(
+                f"INSERT INTO settings (type, key_id, label, icon, sort_order) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
+                ('payment_method', key_id, label, icon, sort_order)
+            )
+            print(f"Seeded default payment method: {key_id}")
+
     # Create default owner user on first run only.
     # Password comes from ADMIN_PASSWORD env var if set, otherwise a random
     # one is generated and printed ONCE so a hardcoded credential never ships.

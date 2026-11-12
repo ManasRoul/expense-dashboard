@@ -364,6 +364,8 @@ tbody tr:hover {
     cursor: pointer;
     font-size: 0.9em;
     transition: all 0.3s ease;
+    min-width: 92px;
+    text-align: center;
 }
 
 .btn-view:hover {
@@ -632,6 +634,11 @@ tbody tr:hover {
 .badge-upi {
     background: #dbeafe;
     color: #1e3a8a;
+}
+
+.badge-other {
+    background: #ede9fe;
+    color: #5b21b6;
 }
 
 @media (max-width: 768px) {

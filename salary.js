@@ -1,4 +1,34 @@
 let employees = [];
+let paymentMethods = [{ id: 'cash', label: 'Cash' }, { id: 'upi', label: 'UPI' }];
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = String(str ?? '');
+    return div.innerHTML;
+}
+
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Builds <option> tags for the payment-method <select>, from whatever methods
+// are configured in Settings (Cash/UPI by default, plus any the owner added).
+function paymentMethodOptionsHtml() {
+    return paymentMethods.map(m => `<option value="${escapeAttr(m.id)}">${escapeHtml(m.label)}</option>`).join('');
+}
+
+async function loadPaymentMethods() {
+    try {
+        const res = await fetch('/api/settings?type=payment_method', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load payment methods');
+        const methods = await res.json();
+        if (methods.length > 0) {
+            paymentMethods = methods.map(m => ({ id: m.key_id, label: m.label }));
+        }
+    } catch (e) {
+        // Keep the Cash/UPI fallback already set above
+    }
+}
 
 // Load employees from settings and build the form
 async function loadEmployees() {
@@ -34,8 +64,7 @@ function renderEmployeeCards() {
                     <label>Payment Method:</label>
                     <select id="${emp.key_id}Method">
                         <option value="">Select Method</option>
-                        <option value="cash">Cash</option>
-                        <option value="upi">UPI</option>
+                        ${paymentMethodOptionsHtml()}
                     </select>
                 </div>
                 <div class="input-row">
@@ -107,9 +136,10 @@ async function viewSalaryDetails(date) {
             const typeBadge = record.payment_type.toLowerCase() === 'advance'
                 ? '<span class="type-badge type-advance">Advance</span>'
                 : '<span class="type-badge type-full">Full</span>';
-            const methodBadge = record.payment_method.toLowerCase() === 'cash'
-                ? '<span class="badge badge-cash">Cash</span>'
-                : '<span class="badge badge-upi">UPI</span>';
+            const methodKey = (record.payment_method || '').toLowerCase();
+            const methodMeta = paymentMethods.find(m => m.id === methodKey);
+            const methodClass = methodKey === 'cash' ? 'badge-cash' : methodKey === 'upi' ? 'badge-upi' : 'badge-other';
+            const methodBadge = `<span class="badge ${methodClass}">${escapeHtml(methodMeta ? methodMeta.label : record.payment_method)}</span>`;
             detailsHTML += `<div class="employee-detail-card">
                 <h4>👤 ${record.employee_name}</h4>
                 <div class="detail-row"><strong>Type:</strong> ${typeBadge}</div>
@@ -213,6 +243,7 @@ document.getElementById('salaryForm').addEventListener('submit', async function(
 // Initialize
 document.addEventListener('DOMContentLoaded', async function() {
     setDefaultDate();
+    await loadPaymentMethods();
     await loadEmployees();
     loadSalaryRecords();
 });
