@@ -6,6 +6,7 @@ still getting routes out of server.py."""
 from flask import request, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import re
 import json
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -369,6 +370,55 @@ def build_transaction_columns_values(data, entry_date):
     values_list.extend([data.get('expense', {}).get('totalExpense', 0), data['closingBalance']])
 
     return columns, values_list
+
+
+# Matches one "(₹AMOUNT - METHOD[ - free text note])" entry, as built by the
+# multi-entry form's buildCategoryData()/getCategoryData() (script-multi.js) and
+# the CSV import. METHOD is always a bare payment-method key_id (letters/digits/
+# underscores only, per the key_id validation in routes_settings.py), so unlike
+# salary's employee-name parsing, no multi-word handling is needed here.
+_METHOD_ENTRY_RE = re.compile(r'\(₹([\d.]+)\s*-\s*([A-Za-z0-9_]+)(?:\s*-\s*(.+))?\)')
+
+
+def split_amount_by_method(amount, method, comment):
+    """Splits one category's stored (amount, method) into a list of
+    (amount, method, note) triples by the entries actually recorded in its
+    comment.
+
+    A category column pair (e.g. room_rent / room_rent_method) only has room
+    for ONE amount and ONE method per transaction - but the "+ Add More" multi-
+    entry form lets several entries under the same category each use a
+    DIFFERENT payment method, combined into that single stored amount (with
+    only the first entry's method kept). The comment text still records every
+    entry's own method individually ("(₹1000 - CASH) | (₹5000 - UPI)"), so this
+    re-derives the true per-method breakdown from it instead of attributing the
+    whole combined amount to whichever method happened to be first - used by
+    the Payment Methods report so a mixed-method category doesn't inflate one
+    method's total at another's expense.
+
+    Falls back to a single (amount, method, comment) triple whenever there's
+    nothing to split (no comment, single entry) or the parsed pieces don't add
+    up to the stored total (safer to keep the money correctly totaled under one
+    method than risk silently dropping/misattributing part of it).
+    """
+    amount = float(amount or 0)
+    method = (method or 'cash')
+    if not comment or '|' not in comment:
+        return [(amount, method, comment or '')]
+
+    parsed = []
+    parsed_total = 0.0
+    for entry in comment.split('|'):
+        match = _METHOD_ENTRY_RE.match(entry.strip())
+        if not match:
+            continue
+        entry_amount = float(match.group(1))
+        parsed.append((entry_amount, match.group(2).lower(), match.group(3) or ''))
+        parsed_total += entry_amount
+
+    if not parsed or abs(parsed_total - amount) > 0.01:
+        return [(amount, method, comment or '')]
+    return parsed
 
 
 def check_session_timeout():

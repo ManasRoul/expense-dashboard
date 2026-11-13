@@ -4,7 +4,7 @@ budget status, category totals, and vendor totals."""
 from flask import Blueprint, jsonify, session
 from datetime import datetime, timedelta
 from config import USE_MYSQL
-from helpers import execute_query, get_db_connection, is_feature_enabled
+from helpers import execute_query, get_db_connection, is_feature_enabled, split_amount_by_method
 
 reports_bp = Blueprint('reports', __name__)
 
@@ -253,8 +253,6 @@ def get_payment_method_totals():
         if 'user_id' not in session:
             return jsonify({'error': 'Not authenticated'}), 401
 
-        placeholder = '%s' if USE_MYSQL else '?'
-
         methods = execute_query(
             "SELECT key_id, label, icon FROM settings WHERE type = 'payment_method' AND active = 1 ORDER BY sort_order",
             fetch=True
@@ -296,29 +294,29 @@ def get_payment_method_totals():
         if not income_fields and not expense_fields:
             return jsonify([]), 200
 
-        # Generalizes get_balances()'s cash/upi CASE WHEN to N methods, in one query
-        # aliased per (field, method) pair - a blank/NULL _method is treated as
-        # 'cash' for backward compatibility with rows saved before payment methods
-        # existed as configurable data.
-        select_parts = []
-        aliases = []  # (alias, method_key, 'income'|'expense')
-        for m in methods:
-            method_key = m['key_id']
-            condition_value = "COALESCE(NULLIF({col}, ''), 'cash')" if method_key == 'cash' else '{col}'
-            for category_type, fields in (('income', income_fields), ('expense', expense_fields)):
-                for f in fields:
-                    alias = f"{f}__{method_key}"
-                    condition = condition_value.format(col=f'{f}_method')
-                    select_parts.append(f"SUM(CASE WHEN {condition} = {placeholder} THEN {f} ELSE 0 END) as {alias}")
-                    aliases.append((alias, method_key, category_type))
-
-        query = f"SELECT {', '.join(select_parts)} FROM transactions WHERE deleted_at IS NULL"
-        values = tuple(method_key for _, method_key, _ in aliases)
-        result = execute_query(query, values, fetch=True, fetchone=True) or {}
+        # Pulled into Python rather than a pure SQL SUM/CASE, because a single
+        # category's stored amount/method pair can actually represent several
+        # entries with DIFFERENT payment methods combined together (the "+ Add
+        # More" multi-entry form only keeps the FIRST entry's method per
+        # category) - split_amount_by_method() re-derives the true per-method
+        # breakdown from the comment text so a mixed-method entry doesn't get
+        # entirely misattributed to whichever method happened to be first.
+        select_cols = ['id']
+        for f in income_fields + expense_fields:
+            select_cols.extend([f, f'{f}_method', f'{f}_comment'])
+        query = f"SELECT {', '.join(select_cols)} FROM transactions WHERE deleted_at IS NULL"
+        rows = execute_query(query, fetch=True) or []
 
         totals = {m['key_id']: {'income': 0.0, 'expense': 0.0} for m in methods}
-        for alias, method_key, category_type in aliases:
-            totals[method_key][category_type] += float(result.get(alias, 0) or 0)
+        for category_type, fields in (('income', income_fields), ('expense', expense_fields)):
+            for f in fields:
+                for row in rows:
+                    amount = float(row.get(f) or 0)
+                    if amount <= 0:
+                        continue
+                    for split_amount, split_method, _ in split_amount_by_method(amount, row.get(f'{f}_method'), row.get(f'{f}_comment')):
+                        if split_method in totals:
+                            totals[split_method][category_type] += split_amount
 
         results = []
         for m in methods:
@@ -376,49 +374,54 @@ def get_payment_method_transactions(key_id):
         finally:
             conn.close()
 
-        # A blank/NULL _method is treated as 'cash' for backward compatibility with
-        # rows saved before payment methods existed as configurable data (same as
-        # get_balances()/get_payment_method_totals()).
-        is_default = key_id == 'cash'
-        subqueries = []
-        values = []
+        # Fetch every category entry with a nonzero amount (not pre-filtered by
+        # method in SQL - see get_payment_method_totals() for why: a single
+        # stored amount/method pair can actually be several entries with
+        # different methods combined together) and split each one by its own
+        # comment-recorded method in Python, so a mixed-method entry only
+        # contributes the portion that's actually this method, with that
+        # portion's own note as its comment.
+        entries = []
         for cat in (categories or []):
             f = cat['key_id']
             method_col = f'{f}_method'
+            comment_col = f'{f}_comment'
+            vendor_col = f'{f}_vendor'
             if f not in columns or method_col not in columns:
                 continue
-            comment_expr = f'{f}_comment' if f'{f}_comment' in columns else "''"
-            vendor_expr = f'{f}_vendor' if f'{f}_vendor' in columns else "''"
+
+            query_cols = ['id', 'date', f, method_col]
+            if comment_col in columns:
+                query_cols.append(comment_col)
+            if vendor_col in columns:
+                query_cols.append(vendor_col)
+
+            rows = execute_query(
+                f"SELECT {', '.join(query_cols)} FROM transactions WHERE deleted_at IS NULL AND {f} > 0",
+                fetch=True
+            ) or []
+
             cat_type = 'income' if cat['type'] == 'income_category' else 'expense'
-            condition = f"COALESCE(NULLIF({method_col}, ''), 'cash') = {placeholder}" if is_default else f"{method_col} = {placeholder}"
-            label_escaped = cat['label'].replace("'", "''")
-            subqueries.append(
-                f"SELECT id, date, '{label_escaped}' as category, '{cat_type}' as type, {f} as amount, "
-                f"{comment_expr} as comment, {vendor_expr} as vendor FROM transactions "
-                f"WHERE deleted_at IS NULL AND {condition} AND {f} > 0"
-            )
-            values.append(key_id)
+            for row in rows:
+                amount = float(row.get(f) or 0)
+                comment = row.get(comment_col, '') if comment_col in columns else ''
+                vendor = row.get(vendor_col, '') if vendor_col in columns else ''
+                for split_amount, split_method, split_note in split_amount_by_method(amount, row.get(method_col), comment):
+                    if split_method != key_id:
+                        continue
+                    entries.append({
+                        'date': row['date'],
+                        'category': cat['label'],
+                        'type': cat_type,
+                        'amount': split_amount,
+                        'comment': split_note,
+                        'vendor': vendor or ''
+                    })
 
-        if not subqueries:
-            return jsonify([]), 200
-
-        union_query = ' UNION ALL '.join(subqueries)
         # Capped to the most recent 500 matching entries, same spirit as the audit
         # log's 1000-entry cap - avoids an unbounded result set over a long history.
-        final_query = f"SELECT * FROM ({union_query}) as combined ORDER BY date DESC, id DESC LIMIT 500"
-        results = execute_query(final_query, tuple(values), fetch=True)
-
-        return jsonify([
-            {
-                'date': r['date'],
-                'category': r['category'],
-                'type': r['type'],
-                'amount': float(r['amount'] or 0),
-                'comment': r['comment'] or '',
-                'vendor': r['vendor'] or ''
-            }
-            for r in (results or [])
-        ]), 200
+        entries.sort(key=lambda e: e['date'], reverse=True)
+        return jsonify(entries[:500]), 200
     except Exception as e:
         print(f"Error fetching payment method transactions: {e}")
         return jsonify({'error': str(e)}), 500

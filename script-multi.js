@@ -501,7 +501,7 @@ function createEntryRow(categoryId, index) {
                 </select>
                 <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                     <option value="">Payment</option>
-                    ${paymentMethodOptionsHtml('cash')}
+                    ${paymentMethodOptionsHtml('')}
                 </select>
                 <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                     oninput="calculateCategoryTotal('${categoryId}')">
@@ -516,7 +516,7 @@ function createEntryRow(categoryId, index) {
         <div class="entry-row" data-category="${categoryId}" data-index="${index}">
             <select class="payment-select" data-field="method" onchange="calculateCategoryTotal('${categoryId}')">
                 <option value="">Payment</option>
-                ${paymentMethodOptionsHtml('cash')}
+                ${paymentMethodOptionsHtml('')}
             </select>
             <input type="number" class="amount-input" data-field="amount" step="0.01" placeholder="0.00" 
                 oninput="calculateCategoryTotal('${categoryId}')">
@@ -746,6 +746,33 @@ function getCategoryData(categoryId) {
     };
 }
 
+// Checks every entry row (across all income/expense categories) that has an
+// amount entered actually has a payment method selected - the dropdown no
+// longer pre-selects Cash, so without this check a forgotten selection would
+// silently save with a blank method instead of blocking submission.
+// Returns the first error message found, or null if everything's fine.
+function findMissingPaymentMethod() {
+    for (const category of [...incomeCategories, ...expenseCategories]) {
+        let container = document.getElementById(`entries-${category.id}`);
+        if (!container) {
+            const snakeCaseId = category.id.replace(/([A-Z])/g, '_$1').toLowerCase();
+            container = document.getElementById(`entries-${snakeCaseId}`);
+        }
+        if (!container) continue;
+
+        const rows = container.querySelectorAll('.entry-row');
+        for (let i = 0; i < rows.length; i++) {
+            const amount = parseFloat(rows[i].querySelector('[data-field="amount"]').value) || 0;
+            const method = rows[i].querySelector('[data-field="method"]').value;
+            if (amount > 0 && !method) {
+                const entryLabel = rows.length > 1 ? `${category.label} (entry ${i + 1})` : category.label;
+                return `Please select a payment method for ${entryLabel}`;
+            }
+        }
+    }
+    return null;
+}
+
 // Build the {openingBalance, entryDate, income, expense, closingBalance} payload from the
 // current form state - shared by the submit handler and "Save as Template".
 function buildFormPayload() {
@@ -788,6 +815,12 @@ function setupFormSubmit() {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
+
+        const missingMethodError = findMissingPaymentMethod();
+        if (missingMethodError) {
+            alert(missingMethodError);
+            return;
+        }
 
         // Check if we're editing
         const urlParams = new URLSearchParams(window.location.search);
