@@ -135,6 +135,47 @@ function clearMonthFilter() {
     displayEmployeeSalariesByMonth(allEmployeesData);
 }
 
+// Groups an employee's records by calendar month and runs a chronological
+// carryover balance: balance = previousBalance + monthlySalary - advances - full
+// payments, for each month that has at least one record (months with zero
+// payments don't accrue/consume salary - there's no way to tell from payment
+// data alone whether the employee was even active that month).
+// Returns { sortedMonthsDesc, monthlyBalances, finalBalance } - finalBalance is
+// the running balance as of the most recent month with any record, which is
+// what "Remaining" should mean (not an all-time sum against one month's rate).
+function computeMonthlyBalances(records, monthlySalary) {
+    const monthlyData = {};
+    records.forEach(record => {
+        const date = parseLocalDate(record.date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = [];
+        monthlyData[monthKey].push(record);
+    });
+
+    const sortedMonthsAsc = Object.keys(monthlyData).sort();
+    let previousBalance = 0;
+    const monthlyBalances = {};
+
+    sortedMonthsAsc.forEach(monthKey => {
+        const monthRecords = monthlyData[monthKey];
+        const advanceTotal = monthRecords.filter(r => r.payment_type.toLowerCase() === 'advance')
+            .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+        const fullTotal = monthRecords.filter(r => r.payment_type.toLowerCase() === 'full')
+            .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+        const currentBalance = previousBalance + monthlySalary - advanceTotal - fullTotal;
+        monthlyBalances[monthKey] = { previous: previousBalance, current: currentBalance, advances: advanceTotal, full: fullTotal };
+        previousBalance = currentBalance;
+    });
+
+    return {
+        monthlyData,
+        sortedMonthsDesc: [...sortedMonthsAsc].reverse(),
+        monthlyBalances,
+        finalBalance: previousBalance
+    };
+}
+
 // Display employee salaries
 function displayEmployeeSalaries(employees) {
     const container = document.getElementById('employeesContainer');
@@ -149,15 +190,19 @@ function displayEmployeeSalaries(employees) {
         const empSettings = employeeSettings[employeeName] || {};
         const monthlySalary = empSettings.salary_amount || 0;
         
-        // Calculate totals
+        // Calculate totals (all-time, informational only - these are NOT what
+        // "Remaining" is based on, see computeMonthlyBalances() below)
         const totalAmount = records.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
         const advancePayments = records.filter(r => r.payment_type.toLowerCase() === 'advance');
         const fullPayments = records.filter(r => r.payment_type.toLowerCase() === 'full');
         const advanceTotal = advancePayments.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
         const fullTotal = fullPayments.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
-        
-        // Calculate remaining (salary - advances - full payments)
-        const remaining = monthlySalary - advanceTotal - fullTotal;
+
+        // Remaining = running monthly balance carried through to the most recent
+        // month with any record - NOT monthlySalary minus the all-time advance/full
+        // sum, which would compare one month's salary against every payment ever
+        // made and drift increasingly negative as payment history grows.
+        const remaining = computeMonthlyBalances(records, monthlySalary).finalBalance;
         const remainingColor = remaining >= 0 ? '#10b981' : '#ef4444';
 
         html += `
@@ -224,47 +269,19 @@ function displayEmployeeSalariesByMonth(employees, filterMonth = null) {
         // Get employee salary from settings
         const empSettings = employeeSettings[employeeName] || {};
         const monthlySalary = empSettings.salary_amount || 0;
-        
-        // Group records by month
-        const monthlyData = {};
-        
-        records.forEach(record => {
-            const date = parseLocalDate(record.date);
-            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            
-            // Filter by selected month if provided
-            if (filterMonth && monthKey !== filterMonth) {
-                return;
-            }
-            
-            if (!monthlyData[monthKey]) {
-                monthlyData[monthKey] = [];
-            }
-            monthlyData[monthKey].push(record);
-        });
 
-        // Sort months in chronological order (oldest first) for carryover calculation
-        const allMonths = Object.keys(monthlyData).sort();
-        
-        // Calculate carryover balances
-        let previousBalance = 0;
-        const monthlyBalances = {};
-        
-        allMonths.forEach(monthKey => {
-            const monthRecords = monthlyData[monthKey];
-            const advanceTotal = monthRecords.filter(r => r.payment_type.toLowerCase() === 'advance')
-                .reduce((sum, r) => sum + r.amount, 0);
-            const fullTotal = monthRecords.filter(r => r.payment_type.toLowerCase() === 'full')
-                .reduce((sum, r) => sum + r.amount, 0);
-            
-            // Current month balance = Previous balance + Monthly salary - Current advances - Full payments
-            const currentBalance = previousBalance + monthlySalary - advanceTotal - fullTotal;
-            monthlyBalances[monthKey] = { previous: previousBalance, current: currentBalance, advances: advanceTotal };
-            previousBalance = currentBalance;
-        });
+        // Filter by selected month if provided - done before grouping, same as
+        // before this refactor, so a month filter still resets carryover to 0
+        // rather than carrying forward whatever balance preceded the filtered month.
+        const filteredRecords = filterMonth
+            ? records.filter(r => {
+                const date = parseLocalDate(r.date);
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                return monthKey === filterMonth;
+            })
+            : records;
 
-        // Sort months in descending order for display (newest first)
-        const sortedMonths = allMonths.reverse();
+        const { monthlyData, sortedMonthsDesc: sortedMonths, monthlyBalances } = computeMonthlyBalances(filteredRecords, monthlySalary);
 
         // Display each month's data for this employee
         sortedMonths.forEach(monthKey => {

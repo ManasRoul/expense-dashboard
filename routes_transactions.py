@@ -14,6 +14,62 @@ from helpers import (
 transactions_bp = Blueprint('transactions', __name__)
 
 
+def sync_salary_records(transaction_id, entry_date, data, placeholder, replace=False):
+    """Mirror a transaction's salary comment into salary_records rows, linked by
+    transaction_id. Used by both create and update so editing a transaction's
+    salary entries actually shows up on the Salary report page, not just on the
+    transaction itself - replace=True clears this transaction's existing rows
+    first (an edit overwrites, same as every other field on the transaction)."""
+    if replace:
+        execute_query(f'DELETE FROM salary_records WHERE transaction_id = {placeholder}', (transaction_id,))
+
+    salary_data = data.get('expense', {}).get('salary', {})
+    salary_amount = salary_data.get('amount', 0) if isinstance(salary_data, dict) else 0
+    salary_comment = salary_data.get('comment', '') if isinstance(salary_data, dict) else ''
+
+    if not (salary_amount > 0 and salary_comment):
+        return
+
+    # Parse salary comment format: (₹5000 - CASH - Shakti - Advance - Note) | (₹3000 - UPI - Kabu - Full)
+    entries = salary_comment.split('|')
+
+    for entry in entries:
+        entry = entry.strip()
+        # Match pattern: (₹amount - METHOD - EmployeeName - PaymentType - Note) or (₹amount - METHOD - EmployeeName - PaymentType)
+        match = re.match(r'\(₹([\d.]+)\s*-\s*(\w+)\s*-\s*(\w+)(?:\s*-\s*(\w+))?(?:\s*-\s*(.+))?\)', entry)
+        if match:
+            amount = float(match.group(1))
+            payment_method = match.group(2).lower()
+            employee_name = match.group(3)
+            payment_type = match.group(4) if match.group(4) else 'Full'
+            note = match.group(5) if match.group(5) else ''
+
+            # Validate payment type
+            if payment_type not in ['Advance', 'Full']:
+                # If 4th group is not a valid payment type, it might be a note from old format
+                note = payment_type if payment_type else ''
+                payment_type = 'Full'
+
+            # Insert into salary_records, linked to this transaction via
+            # transaction_id so deleting one only affects records it created
+            # (not every other salary_record/transaction sharing the same date)
+            salary_query = f'''INSERT INTO salary_records
+                (date, employee_name, payment_type, amount, payment_method, note, transaction_id)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
+
+            salary_values = (
+                entry_date,
+                employee_name,
+                payment_type,
+                amount,
+                payment_method,
+                note,
+                transaction_id
+            )
+
+            execute_query(salary_query, salary_values)
+
+
 @transactions_bp.route('/api/transactions', methods=['POST'])
 def save_transaction():
     try:
@@ -50,50 +106,7 @@ def save_transaction():
 
         transaction_id = execute_query(query, tuple(values_list))
 
-        # Also save salary entries to salary_records table
-        salary_data = data.get('expense', {}).get('salary', {})
-        salary_amount = salary_data.get('amount', 0) if isinstance(salary_data, dict) else 0
-        salary_comment = salary_data.get('comment', '') if isinstance(salary_data, dict) else ''
-
-        if salary_amount > 0 and salary_comment:
-            # Parse salary comment format: (₹5000 - CASH - Shakti - Advance - Note) | (₹3000 - UPI - Kabu - Full)
-            entries = salary_comment.split('|')
-
-            for entry in entries:
-                entry = entry.strip()
-                # Match pattern: (₹amount - METHOD - EmployeeName - PaymentType - Note) or (₹amount - METHOD - EmployeeName - PaymentType)
-                match = re.match(r'\(₹([\d.]+)\s*-\s*(\w+)\s*-\s*(\w+)(?:\s*-\s*(\w+))?(?:\s*-\s*(.+))?\)', entry)
-                if match:
-                    amount = float(match.group(1))
-                    payment_method = match.group(2).lower()
-                    employee_name = match.group(3)
-                    payment_type = match.group(4) if match.group(4) else 'Full'
-                    note = match.group(5) if match.group(5) else ''
-
-                    # Validate payment type
-                    if payment_type not in ['Advance', 'Full']:
-                        # If 4th group is not a valid payment type, it might be a note from old format
-                        note = payment_type if payment_type else ''
-                        payment_type = 'Full'
-
-                    # Insert into salary_records, linked to this transaction via
-                    # transaction_id so deleting one only affects records it created
-                    # (not every other salary_record/transaction sharing the same date)
-                    salary_query = f'''INSERT INTO salary_records
-                        (date, employee_name, payment_type, amount, payment_method, note, transaction_id)
-                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})'''
-
-                    salary_values = (
-                        entry_date,
-                        employee_name,
-                        payment_type,
-                        amount,
-                        payment_method,
-                        note,
-                        transaction_id
-                    )
-
-                    execute_query(salary_query, salary_values)
+        sync_salary_records(transaction_id, entry_date, data, placeholder)
 
         return jsonify({'id': transaction_id, 'message': 'Transaction saved successfully'}), 200
     except Exception as e:
@@ -183,6 +196,15 @@ def handle_transaction(transaction_id):
             query = f"UPDATE transactions SET {', '.join(set_parts)} WHERE id = {placeholder}"
 
             execute_query(query, tuple(values_list))
+
+            # entry_date is only set above if the request body included one - fall
+            # back to the transaction's own date (just-updated or pre-existing) so
+            # salary_records still gets a valid date even on a partial-field edit.
+            sync_entry_date = entry_date or execute_query(
+                f'SELECT date FROM transactions WHERE id = {placeholder}',
+                (transaction_id,), fetch=True, fetchone=True
+            )['date']
+            sync_salary_records(transaction_id, sync_entry_date, data, placeholder, replace=True)
 
             return jsonify({'id': transaction_id, 'message': 'Transaction updated successfully'}), 200
         except Exception as e:

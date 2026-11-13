@@ -29,7 +29,7 @@ def init_db():
                 port=MYSQL_CONFIG['port']
             )
             cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{MYSQL_CONFIG['database']}`")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{MYSQL_CONFIG['database']}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
             cursor.close()
             conn.close()
         except Error as e:
@@ -117,7 +117,7 @@ def init_db():
             total_expense DECIMAL(10, 2),
 
             closing_balance DECIMAL(10, 2)
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         create_table_query = '''CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,7 +241,7 @@ def init_db():
             password_hash VARCHAR(255) NOT NULL,
             role VARCHAR(20) DEFAULT 'contributor',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         users_table_query = '''CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,7 +265,7 @@ def init_db():
             note TEXT DEFAULT '',
             transaction_id INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         salary_table_query = '''CREATE TABLE IF NOT EXISTS salary_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -313,7 +313,7 @@ def init_db():
             original_filename VARCHAR(255) DEFAULT NULL,
             uploaded_by VARCHAR(50) DEFAULT NULL,
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         receipts_table_query = '''CREATE TABLE IF NOT EXISTS transaction_receipts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -357,7 +357,7 @@ def init_db():
             created_by VARCHAR(50) DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             active TINYINT DEFAULT 1
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         recurring_table_query = '''CREATE TABLE IF NOT EXISTS recurring_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -393,7 +393,7 @@ def init_db():
             active TINYINT DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY unique_type_key (type, key_id)
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         settings_table_query = '''CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -480,7 +480,7 @@ def init_db():
             icon VARCHAR(10) DEFAULT '',
             value DECIMAL(10, 2) DEFAULT 0,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )'''
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'''
     else:
         app_config_table_query = '''CREATE TABLE IF NOT EXISTS app_config (
             key_id TEXT PRIMARY KEY,
@@ -552,6 +552,67 @@ def init_db():
                 ('payment_method', key_id, label, icon, sort_order)
             )
             print(f"Seeded default payment method: {key_id}")
+
+    # Fix MySQL tables that were created before utf8mb4 was added to every CREATE
+    # TABLE statement above - a narrower charset (utf8/latin1) can't store 4-byte
+    # emoji, so MySQL silently substitutes '?' on insert/update, corrupting icon
+    # values at write time (this is not a frontend rendering issue - the '?' is
+    # literally what gets stored in the column). Checked once via
+    # information_schema rather than run unconditionally every startup, since
+    # ALTER TABLE CONVERT TO rebuilds the whole table.
+    if USE_MYSQL:
+        tables_to_check = ['transactions', 'users', 'salary_records', 'transaction_receipts', 'recurring_templates', 'settings', 'app_config']
+        for table in tables_to_check:
+            try:
+                charset_row = execute_query(
+                    "SELECT CCSA.character_set_name AS charset "
+                    "FROM information_schema.TABLES T "
+                    "JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY CCSA "
+                    "ON T.table_collation = CCSA.collation_name "
+                    "WHERE T.table_schema = %s AND T.table_name = %s",
+                    (MYSQL_CONFIG['database'], table), fetch=True, fetchone=True
+                )
+                if charset_row and charset_row['charset'] != 'utf8mb4':
+                    execute_query(f"ALTER TABLE {table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+                    print(f"Converted {table} to utf8mb4 (was {charset_row['charset']})")
+            except Exception as e:
+                print(f"Warning: could not check/convert charset for {table}: {e}")
+
+        # Repair icon values already corrupted into a literal '?' by the charset
+        # issue above, before this migration ran. Icons are never user-settable
+        # (the Settings UI has no icon field - see routes_settings.py), so every
+        # key_id's correct icon is exactly what's seeded above; safe to restore
+        # unconditionally from this known-good mapping. Must run AFTER the
+        # conversion loop above, or the UPDATE would just get mangled to '?' again.
+        known_icons = {
+            'room_rent': '🏠', 'mattress_charge': '🛏️', 'travel_cab': '🚕',
+            'kitchen_facility': '🍳', 'clean_charge': '🧹', 'misc_receipt': '💵',
+            'brokerage': '🤝', 'salary': '💼', 'room_cleaning_charge': '🧼',
+            'generator_maintenance': '⚡', 'hotel_stationary': '📝',
+            'hotel_cleaning_sanitation': '🧽', 'rent_taxes': '🏢', 'recharge': '📡',
+            'plumbing_maintenance': '🔧', 'electricity_maintenance': '💡',
+            'electricity_bill': '⚡', 'staff_fooding': '🍽️', 'laundry': '👕',
+            'owner_kitchen_cab': '🚗', 'office_stationary': '📋', 'misc_expenses': '💳',
+            'cash': '💵', 'upi': '📱',
+        }
+        for key_id, icon in known_icons.items():
+            execute_query(
+                f"UPDATE settings SET icon = {placeholder} WHERE key_id = {placeholder} AND icon != {placeholder}",
+                (icon, key_id, icon)
+            )
+
+        known_app_config_icons = {
+            'low_balance_threshold': '⚠️',
+            'feature_created_by_tracking': '🧩',
+            'feature_audit_log': '🧩',
+            'feature_receipts': '🧩',
+            'feature_vendor_tracking': '🧩',
+        }
+        for key_id, icon in known_app_config_icons.items():
+            execute_query(
+                f"UPDATE app_config SET icon = {placeholder} WHERE key_id = {placeholder} AND icon != {placeholder}",
+                (icon, key_id, icon)
+            )
 
     # Create default owner user on first run only.
     # Password comes from ADMIN_PASSWORD env var if set, otherwise a random
