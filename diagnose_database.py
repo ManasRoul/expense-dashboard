@@ -143,7 +143,15 @@ try:
             expense_cols_with_data = []
             income_cols_with_data = []
             
+            # Static (non-category) numeric columns that exist on every transaction
+            # row regardless of which categories are configured - these aren't
+            # key_ids and will never be found in settings, so skip them rather
+            # than flagging each one as a false "NOT found in settings" error.
+            STATIC_COLUMNS = {'id', 'opening_balance', 'total_income', 'total_expense', 'closing_balance'}
+
             for col_name, value in last_tx.items():
+                if col_name in STATIC_COLUMNS:
+                    continue
                 if value and isinstance(value, (int, float)) and value != 0:
                     if '_method' not in col_name and '_comment' not in col_name:
                         if not col_name.startswith('total_') and not col_name.startswith('opening_') and not col_name.startswith('closing_'):

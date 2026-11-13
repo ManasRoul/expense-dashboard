@@ -33,22 +33,41 @@ def sync_salary_records(transaction_id, entry_date, data, placeholder, replace=F
     # Parse salary comment format: (₹5000 - CASH - Shakti - Advance - Note) | (₹3000 - UPI - Kabu - Full)
     entries = salary_comment.split('|')
 
+    # Method and employee name are matched non-greedily (.+?) rather than \w+ so
+    # multi-word values (a full name like "Raj Kumar", or a custom payment method
+    # label like "Bank Transfer") don't silently fail to match at all - a \w+-only
+    # pattern stops at the first space and then can't satisfy the rest of the
+    # pattern, so re.match() returns None and the whole entry gets dropped with
+    # no error, which is exactly how a salary payment can vanish from the Salary
+    # report page while the transaction itself still saves fine.
+    # Tried in order from most to least specific: payment type ("Advance"/"Full")
+    # is a fixed, known vocabulary, so when present it anchors where method/employee
+    # end - only fall back to the no-payment-type shape when that anchor is absent
+    # (e.g. the user didn't pick a payment type in the form).
+    PATTERNS = [
+        (re.compile(r'\(₹([\d.]+)\s*-\s*(.+?)\s*-\s*(.+?)\s*-\s*(Advance|Full)\s*-\s*(.+)\)'), True),   # amount - method - employee - type - note
+        (re.compile(r'\(₹([\d.]+)\s*-\s*(.+?)\s*-\s*(.+?)\s*-\s*(Advance|Full)\)'), False),             # amount - method - employee - type
+        (re.compile(r'\(₹([\d.]+)\s*-\s*(.+?)\s*-\s*(.+)\)'), None),                                    # amount - method - employee (no type/note)
+    ]
+
     for entry in entries:
         entry = entry.strip()
-        # Match pattern: (₹amount - METHOD - EmployeeName - PaymentType - Note) or (₹amount - METHOD - EmployeeName - PaymentType)
-        match = re.match(r'\(₹([\d.]+)\s*-\s*(\w+)\s*-\s*(\w+)(?:\s*-\s*(\w+))?(?:\s*-\s*(.+))?\)', entry)
+        match = None
+        has_note = False
+        has_type = None
+        for pattern, note_flag in PATTERNS:
+            match = pattern.match(entry)
+            if match:
+                has_note = note_flag is True
+                has_type = note_flag is not None
+                break
+
         if match:
             amount = float(match.group(1))
-            payment_method = match.group(2).lower()
-            employee_name = match.group(3)
-            payment_type = match.group(4) if match.group(4) else 'Full'
-            note = match.group(5) if match.group(5) else ''
-
-            # Validate payment type
-            if payment_type not in ['Advance', 'Full']:
-                # If 4th group is not a valid payment type, it might be a note from old format
-                note = payment_type if payment_type else ''
-                payment_type = 'Full'
+            payment_method = match.group(2).strip().lower()
+            employee_name = match.group(3).strip()
+            payment_type = match.group(4) if has_type else 'Full'
+            note = match.group(5) if has_note else ''
 
             # Insert into salary_records, linked to this transaction via
             # transaction_id so deleting one only affects records it created
