@@ -153,8 +153,14 @@ def add_category_columns(key_id):
 
             cursor.execute(check_query, (col_method,))
             if not cursor.fetchone():
-                # Add the method column
-                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_method} VARCHAR(10)"
+                # Add the method column - VARCHAR(50) matches the max length of a
+                # custom payment method's key_id (see the key_id validation regex
+                # in routes_settings.py); VARCHAR(10) was enough back when only
+                # 'cash'/'upi' were possible values, but silently truncates any
+                # longer custom payment method key (e.g. 'situ_account' -> 'situ_accou')
+                # on MySQL, which then never matches anything on the Payment
+                # Methods report page even though the transaction itself looks fine.
+                alter_query = f"ALTER TABLE transactions ADD COLUMN {col_method} VARCHAR(50)"
                 cursor.execute(alter_query)
 
             cursor.execute(check_query, (col_comment,))

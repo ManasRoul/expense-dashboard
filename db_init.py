@@ -44,75 +44,75 @@ def init_db():
             opening_balance DECIMAL(10, 2),
 
             room_rent DECIMAL(10, 2) DEFAULT 0,
-            room_rent_method VARCHAR(10),
+            room_rent_method VARCHAR(50),
             room_rent_comment TEXT DEFAULT '',
             mattress_charge DECIMAL(10, 2) DEFAULT 0,
-            mattress_charge_method VARCHAR(10),
+            mattress_charge_method VARCHAR(50),
             mattress_charge_comment TEXT DEFAULT '',
             travel_cab DECIMAL(10, 2) DEFAULT 0,
-            travel_cab_method VARCHAR(10),
+            travel_cab_method VARCHAR(50),
             travel_cab_comment TEXT DEFAULT '',
             kitchen_facility DECIMAL(10, 2) DEFAULT 0,
-            kitchen_facility_method VARCHAR(10),
+            kitchen_facility_method VARCHAR(50),
             kitchen_facility_comment TEXT DEFAULT '',
             clean_charge DECIMAL(10, 2) DEFAULT 0,
-            clean_charge_method VARCHAR(10),
+            clean_charge_method VARCHAR(50),
             clean_charge_comment TEXT DEFAULT '',
             misc_receipt DECIMAL(10, 2) DEFAULT 0,
-            misc_receipt_method VARCHAR(10),
+            misc_receipt_method VARCHAR(50),
             misc_receipt_comment TEXT DEFAULT '',
             total_income DECIMAL(10, 2),
 
             brokerage DECIMAL(10, 2) DEFAULT 0,
-            brokerage_method VARCHAR(10),
+            brokerage_method VARCHAR(50),
             brokerage_comment TEXT DEFAULT '',
             salary DECIMAL(10, 2) DEFAULT 0,
-            salary_method VARCHAR(10),
+            salary_method VARCHAR(50),
             salary_comment TEXT DEFAULT '',
             room_cleaning_charge DECIMAL(10, 2) DEFAULT 0,
-            room_cleaning_charge_method VARCHAR(10),
+            room_cleaning_charge_method VARCHAR(50),
             room_cleaning_charge_comment TEXT DEFAULT '',
             generator_maintenance DECIMAL(10, 2) DEFAULT 0,
-            generator_maintenance_method VARCHAR(10),
+            generator_maintenance_method VARCHAR(50),
             generator_maintenance_comment TEXT DEFAULT '',
             hotel_stationary DECIMAL(10, 2) DEFAULT 0,
-            hotel_stationary_method VARCHAR(10),
+            hotel_stationary_method VARCHAR(50),
             hotel_stationary_comment TEXT DEFAULT '',
             hotel_cleaning_sanitation DECIMAL(10, 2) DEFAULT 0,
-            hotel_cleaning_sanitation_method VARCHAR(10),
+            hotel_cleaning_sanitation_method VARCHAR(50),
             hotel_cleaning_sanitation_comment TEXT DEFAULT '',
             rent_taxes DECIMAL(10, 2) DEFAULT 0,
-            rent_taxes_method VARCHAR(10),
+            rent_taxes_method VARCHAR(50),
             rent_taxes_comment TEXT DEFAULT '',
             tv_recharge DECIMAL(10, 2) DEFAULT 0,
-            tv_recharge_method VARCHAR(10),
+            tv_recharge_method VARCHAR(50),
             tv_recharge_comment TEXT DEFAULT '',
             recharge DECIMAL(10, 2) DEFAULT 0,
-            recharge_method VARCHAR(10),
+            recharge_method VARCHAR(50),
             recharge_comment TEXT DEFAULT '',
             plumbing_maintenance DECIMAL(10, 2) DEFAULT 0,
-            plumbing_maintenance_method VARCHAR(10),
+            plumbing_maintenance_method VARCHAR(50),
             plumbing_maintenance_comment TEXT DEFAULT '',
             electricity_maintenance DECIMAL(10, 2) DEFAULT 0,
-            electricity_maintenance_method VARCHAR(10),
+            electricity_maintenance_method VARCHAR(50),
             electricity_maintenance_comment TEXT DEFAULT '',
             electricity_bill DECIMAL(10, 2) DEFAULT 0,
-            electricity_bill_method VARCHAR(10),
+            electricity_bill_method VARCHAR(50),
             electricity_bill_comment TEXT DEFAULT '',
             staff_fooding DECIMAL(10, 2) DEFAULT 0,
-            staff_fooding_method VARCHAR(10),
+            staff_fooding_method VARCHAR(50),
             staff_fooding_comment TEXT DEFAULT '',
             laundry DECIMAL(10, 2) DEFAULT 0,
-            laundry_method VARCHAR(10),
+            laundry_method VARCHAR(50),
             laundry_comment TEXT DEFAULT '',
             owner_kitchen_cab DECIMAL(10, 2) DEFAULT 0,
-            owner_kitchen_cab_method VARCHAR(10),
+            owner_kitchen_cab_method VARCHAR(50),
             owner_kitchen_cab_comment TEXT DEFAULT '',
             office_stationary DECIMAL(10, 2) DEFAULT 0,
-            office_stationary_method VARCHAR(10),
+            office_stationary_method VARCHAR(50),
             office_stationary_comment TEXT DEFAULT '',
             misc_expenses DECIMAL(10, 2) DEFAULT 0,
-            misc_expenses_method VARCHAR(10),
+            misc_expenses_method VARCHAR(50),
             misc_expenses_comment TEXT DEFAULT '',
             total_expense DECIMAL(10, 2),
 
@@ -261,7 +261,7 @@ def init_db():
             employee_name VARCHAR(50) NOT NULL,
             payment_type VARCHAR(20) NOT NULL,
             amount DECIMAL(10, 2) NOT NULL,
-            payment_method VARCHAR(10) NOT NULL,
+            payment_method VARCHAR(50) NOT NULL,
             note TEXT DEFAULT '',
             transaction_id INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -613,6 +613,37 @@ def init_db():
                 f"UPDATE app_config SET icon = {placeholder} WHERE key_id = {placeholder} AND icon != {placeholder}",
                 (icon, key_id, icon)
             )
+
+        # Widen every category's *_method column (and salary_records.payment_method)
+        # from VARCHAR(10) to VARCHAR(50) on MySQL. VARCHAR(10) was fine back when
+        # only 'cash'/'upi' were possible values, but a custom payment method's
+        # key_id can be up to 50 chars (see the validation regex in
+        # routes_settings.py) - MySQL silently truncates anything over the column
+        # limit on insert (e.g. 'situ_account' -> 'situ_accou'), so the stored
+        # value then never matches the real key_id anywhere that compares against
+        # it exactly (the Payment Methods report page), even though the
+        # transaction itself looks fine everywhere else. Checked via
+        # information_schema and only widened where still too narrow, same
+        # pattern as the utf8mb4 charset fix above.
+        try:
+            # RIGHT(...) = '_method' avoids LIKE wildcard-escaping entirely (no
+            # ambiguity over escaping '_', which LIKE treats as a single-char
+            # wildcard) - just an exact suffix check.
+            method_columns = execute_query(
+                "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s AND ("
+                "  (TABLE_NAME = 'transactions' AND RIGHT(COLUMN_NAME, 7) = '_method') "
+                "  OR (TABLE_NAME = 'salary_records' AND COLUMN_NAME = 'payment_method')"
+                ") AND CHARACTER_MAXIMUM_LENGTH < 50",
+                (MYSQL_CONFIG['database'],), fetch=True
+            )
+            for row in (method_columns or []):
+                table = row['TABLE_NAME']
+                col = row['COLUMN_NAME']
+                execute_query(f"ALTER TABLE {table} MODIFY COLUMN {col} VARCHAR(50)")
+                print(f"Widened {table}.{col} to VARCHAR(50)")
+        except Exception as e:
+            print(f"Warning: could not widen *_method columns: {e}")
 
     # Create default owner user on first run only.
     # Password comes from ADMIN_PASSWORD env var if set, otherwise a random

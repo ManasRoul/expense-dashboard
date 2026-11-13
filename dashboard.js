@@ -1109,6 +1109,34 @@ function getCell(row, ...keys) {
     return '';
 }
 
+// Resolves whatever text was typed into a Method cell (e.g. "Situ-account",
+// the payment method's display label) to the actual key_id that's stored in
+// the database and compared against on the Payment Methods report page
+// (e.g. "situ_account"). Without this, typing a label instead of the exact
+// key_id - different case, a hyphen instead of an underscore, etc. - gets
+// stored as a value that never matches any configured method: the dashboard's
+// per-entry badge still shows *something* readable (it falls back to the raw
+// stored text when it can't find a match), so the import looks like it worked,
+// but the Payment Methods page's totals/drill-down - which require an exact
+// key_id match - silently show nothing for it.
+function resolvePaymentMethodKey(rawText) {
+    const trimmed = (rawText || '').toString().trim();
+    if (!trimmed) return 'cash';
+    const normalize = s => s.toLowerCase().replace(/[\s-]+/g, '_');
+    const normalized = normalize(trimmed);
+
+    const methods = categoryMetadata.filter(c => c.type === 'payment_method');
+    for (const m of methods) {
+        if (normalize(m.key_id) === normalized || normalize(m.label) === normalized) {
+            return m.key_id;
+        }
+    }
+    // No configured method matched - keep the typed value (lowercased) rather
+    // than silently defaulting to 'cash', so it's still visible as unmatched
+    // instead of being mis-attributed to a method the importer didn't intend.
+    return normalized;
+}
+
 // Parses one category's Amount/Method/Comment cell(s) from a single row into
 // a flat list of individual entries (not summed/joined yet) via ;-separated
 // lists. Used both for one row's own ;-separated values and for merging
@@ -1118,7 +1146,7 @@ function parseCellEntries(amountStr, methodStr, commentStr) {
     amountStr = (amountStr || '').toString().trim();
     if (!amountStr) return [];
     const amounts = amountStr.split(';').map(s => parseFloat(s.trim()) || 0);
-    const methods = (methodStr || '').toString().split(';').map(s => s.trim().toLowerCase());
+    const methods = (methodStr || '').toString().split(';').map(s => resolvePaymentMethodKey(s));
     const comments = (commentStr || '').toString().split(';').map(s => s.trim());
     return amounts
         .map((amount, j) => ({
@@ -1162,7 +1190,7 @@ function parseSalaryRowEntries(row) {
     if (!amountsRaw) return [];
     const amounts = amountsRaw.split(';').map(s => parseFloat(s.trim()) || 0);
     const employees = getCell(row, 'Salary Employee (separate multiple with ;)', 'Salary Employee').toString().split(';').map(s => s.trim());
-    const methods = getCell(row, 'Salary Method (cash/upi, ; separated)', 'Salary Method (cash/upi)').toString().split(';').map(s => s.trim().toLowerCase());
+    const methods = getCell(row, 'Salary Method (cash/upi, ; separated)', 'Salary Method (cash/upi)').toString().split(';').map(s => resolvePaymentMethodKey(s));
     const paymentTypes = getCell(row, 'Salary Payment Type (Advance/Full, ; separated)', 'Salary Payment Type (Advance/Full)').toString().split(';').map(s => s.trim());
     const notes = getCell(row, 'Salary Note (; separated)', 'Salary Note').toString().split(';').map(s => s.trim());
 
